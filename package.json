@@ -1,6 +1,6 @@
 {
   "name": "vex",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Vex — Linux-first Steam game setup companion (SLSsteam + SFF workflow)",
   "main": "src/main/main.js",
   "scripts": {

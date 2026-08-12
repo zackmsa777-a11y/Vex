@@ -299,14 +299,26 @@ function createSteamAppManifest(appId, gameName) {
   const manifestPath = path.join(steamAppsDir, `appmanifest_${appId}.acf`);
   try {
     fs.mkdirSync(steamAppsDir, { recursive: true });
-    // Never replace Steam's real manifest for an already-installed game.
+    let existingManifest = null;
     if (fs.existsSync(manifestPath)) {
-      return { success: true, path: manifestPath, created: false };
+      try { existingManifest = fs.readFileSync(manifestPath, 'utf-8'); } catch {}
+      // Never replace a real installed-game manifest. Older Vex versions did
+      // create a fake fully-installed, zero-byte manifest; migrate that one.
+      const isOldVexPlaceholder = existingManifest
+        && /"StateFlags"\s+"4"/.test(existingManifest)
+        && /"SizeOnDisk"\s+"0"/.test(existingManifest)
+        && /"buildid"\s+"0"/.test(existingManifest);
+      if (!isOldVexPlaceholder) {
+        return { success: true, path: manifestPath, created: false };
+      }
     }
 
     const title = escapeSteamVdf(gameName || `App ${appId}`);
     const installDir = escapeSteamVdf(getSteamInstallDir(gameName, appId));
-    const manifest = `"AppState"\n{\n\t"appid"\t\t"${appId}"\n\t"Universe"\t\t"1"\n\t"name"\t\t"${title}"\n\t"StateFlags"\t\t"4"\n\t"installdir"\t\t"${installDir}"\n\t"LastUpdated"\t\t"0"\n\t"UpdateResult"\t\t"0"\n\t"SizeOnDisk"\t\t"0"\n\t"buildid"\t\t"0"\n\t"LastOwner"\t\t"0"\n\t"BytesToDownload"\t\t"0"\n\t"BytesDownloaded"\t\t"0"\n\t"AutoUpdateBehavior"\t\t"0"\n\t"AllowOtherDownloadsWhileRunning"\t\t"0"\n\t"ScheduledAutoUpdate"\t\t"0"\n}\n`;
+    // 1026 tells Steam that an update/download is required. Do not write
+    // SizeOnDisk=0 or BytesToDownload=0: those values make Steam treat an
+    // empty placeholder as a completed installation and cause the 0-byte error.
+    const manifest = `"AppState"\n{\n\t"appid"\t\t"${appId}"\n\t"Universe"\t\t"1"\n\t"name"\t\t"${title}"\n\t"StateFlags"\t\t"1026"\n\t"installdir"\t\t"${installDir}"\n\t"LastUpdated"\t\t"0"\n\t"UpdateResult"\t\t"0"\n}\n`;
 
     // Atomic write prevents Steam from reading a half-written manifest.
     const tempPath = `${manifestPath}.tmp-${process.pid}`;
@@ -377,12 +389,16 @@ function deleteLuaConfig(appId) {
     const luaPath = path.join(steamInfo.path, 'config', 'stplug-in', `${appId}.lua`);
     try { if (fs.existsSync(luaPath)) { fs.unlinkSync(luaPath); luaDeleted = true; } } catch {}
     const manifestPath = path.join(steamInfo.path, 'steamapps', `appmanifest_${appId}.acf`);
-    // Only remove the manifest when it is the zero-byte Vex placeholder.
-    // Real installed-game manifests must remain untouched.
+    // Only remove a Vex placeholder manifest. Real installed-game manifests
+    // must remain untouched.
     try {
       if (fs.existsSync(manifestPath)) {
         const manifest = fs.readFileSync(manifestPath, 'utf-8');
-        if (/"SizeOnDisk"\s+"0"/.test(manifest) && /"buildid"\s+"0"/.test(manifest)) {
+        const isVexPlaceholder = /"StateFlags"\s+"1026"/.test(manifest)
+          || (/"StateFlags"\s+"4"/.test(manifest)
+            && /"SizeOnDisk"\s+"0"/.test(manifest)
+            && /"buildid"\s+"0"/.test(manifest));
+        if (isVexPlaceholder) {
           fs.unlinkSync(manifestPath);
         }
       }

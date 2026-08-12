@@ -27,9 +27,9 @@
   <url type="bugtracker">https://github.com/zackmsa777-a11y/Vex/issues</url>
   <content_rating type="oars-1.1"/>
   <releases>
-    <release version="1.1.0" date="2026-08-12">
+    <release version="1.1.1" date="2026-08-12">
       <description>
-        <p>Fixed SLSsteam injection and config.yaml integration.</p>
+        <p>Added Steam appmanifest creation and fixed the zero-byte placeholder manifest issue.</p>
       </description>
     </release>
   </releases>
