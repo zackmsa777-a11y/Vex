@@ -625,33 +625,31 @@ function registerIPC() {
   ipcMain.handle('nexus:search', async (_e, query) => fetchNexusGames(query));
 
   // Manifest Database
-  ipcMain.handle('manifests:sync', async () => {
-    try {
-      return await manifestDB.syncManifestDatabase();
-    } catch (err) {
-      return { tokens: false, depotKeys: false, error: err.message };
-    }
-  });
-  ipcMain.handle('manifests:stats', async () => manifestDB.getDatabaseStats());
-  ipcMain.handle('manifests:checkApp', async (_e, appId) => manifestDB.isAppInDatabase(appId));
   ipcMain.handle('manifests:apply', async (_e, appId, gameName) => {
     const steamInfo = detectSteamPath();
     if (!steamInfo) return { success: false, error: 'Steam path not found' };
-    const apiKey = getConfig('manifestHubApiKey', '');
-    if (!apiKey) {
-      return { success: false, error: `No ManifestHub API key set. Get a free key at ${manifestDB.MANIFEST_HUB_KEYSITE} and enter it in Settings.` };
+    const authKey = getConfig('ryuuAuthKey', '');
+    if (!authKey) {
+      return { success: false, error: `No auth key set. Register at ${manifestDB.RYUU_BASE} to get a free key (50 downloads/day).` };
     }
     try {
-      return await manifestDB.applyManifestsForApp(appId, gameName, steamInfo.path, apiKey);
+      return await manifestDB.applyManifestsForApp(appId, gameName, steamInfo.path, authKey);
     } catch (err) {
       return { success: false, error: err.message };
     }
   });
-  ipcMain.handle('manifests:setApiKey', async (_e, key) => {
-    saveConfig('manifestHubApiKey', key);
+  ipcMain.handle('manifests:setKey', async (_e, key) => {
+    saveConfig('ryuuAuthKey', key);
     return { success: true };
   });
-  ipcMain.handle('manifests:getApiKey', async () => getConfig('manifestHubApiKey', ''));
+  ipcMain.handle('manifests:getKey', async () => getConfig('ryuuAuthKey', ''));
+  ipcMain.handle('manifests:status', async () => {
+    try {
+      return await manifestDB.checkProviderStatus();
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
 
   // Downloads
   ipcMain.handle('downloads:start', async (_e, opts) => {

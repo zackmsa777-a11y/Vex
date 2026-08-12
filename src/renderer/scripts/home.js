@@ -48,14 +48,33 @@ window.VexHome = {
 document.getElementById('appid-submit').addEventListener('click', async () => {
   const appId = document.getElementById('appid-input').value.trim();
   const name = document.getElementById('game-name-input').value.trim() || `App ${appId}`;
+  const fetchManifests = document.getElementById('appid-fetch-manifests')?.checked ?? true;
   if (!appId) { showToast('Please enter an AppID', 'error'); return; }
 
   showToast('Adding game to SLSsteam config...');
   try {
     const result = await window.vex.lua.write(appId, name, null);
     if (result.success) {
-      showToast('Game added. Opening Steam installer...', 'success');
-      window.vex.steam.installGame(appId);
+      // Auto-fetch manifests if enabled
+      if (fetchManifests) {
+        showToast('Game added! Fetching manifests from Ryuu...', 'success');
+        try {
+          const manifestResult = await window.vex.manifests.apply(appId, name);
+          if (manifestResult.success) {
+            const parts = [];
+            if (manifestResult.manifestsExtracted) parts.push(`${manifestResult.manifestsExtracted} manifests cached`);
+            if (manifestResult.luaWritten) parts.push('Lua script written');
+            if (manifestResult.acfCreated) parts.push('ACF manifest created');
+            showToast(parts.join(', ') + '. Restart Steam to download.', 'success');
+          } else {
+            showToast(`Game added but manifest fetch failed: ${manifestResult.error || 'Unknown'}. Set auth key in Settings.`, 'error');
+          }
+        } catch (err) {
+          showToast(`Game added but manifest fetch failed: ${err.message}`, 'error');
+        }
+      } else {
+        showToast('Game added! Restart Steam to see it in your library.', 'success');
+      }
       closeModal('add-game-modal');
       document.getElementById('appid-input').value = '';
       document.getElementById('game-name-input').value = '';

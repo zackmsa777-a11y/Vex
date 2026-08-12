@@ -1,7 +1,7 @@
 /* eslint-disable */
-// Vex — Manifest Database Integration
-// Fetches and applies Steam depot manifests from ManifestHub
-// so SLSsteam-unlocked games can actually download content.
+// Vex — Manifest Database Integration (v2 — Ryuu's Manifest API)
+// Fetches depot manifests from Ryuu's Manifest API (generator.ryuu.lol)
+// and places them in Steam's depotcache so SLSsteam-unlocked games can download.
 
 const path = require('path');
 const fs = require('fs');
@@ -9,7 +9,14 @@ const os = require('os');
 const https = require('https');
 const { app } = require('electron');
 
-const MANIFEST_HUB_REPO = 'dvahana2424-web/sojogamesdatabase1';
+// ─── API Sources ───
+const RYUU_API = 'https://generator.ryuu.lol/api/download';
+const RYUU_BASE = 'https://generator.ryuu.lol';
+const DEPOTBOX_API = 'https://depotbox.org/api/tools/v1';
+const DEPOTBOX_BASE = 'https://depotbox.org';
+
+// ─── Fallback: ManifestHub2 (SSMGAlt fork on GitHub) ───
+const MANIFEST_HUB_REPO = 'SSMGAlt/ManifestHub2';
 const MANIFEST_HUB_API = 'https://api.manifesthub1.filegear-sg.me/manifest';
 const MANIFEST_HUB_KEYSITE = 'https://manifesthub1.filegear-sg.me';
 
@@ -18,21 +25,21 @@ function getCacheDir() {
   return path.join(app.getPath('userData'), 'manifest-cache');
 }
 
-function getTokensPath() {
-  return path.join(getCacheDir(), 'appaccesstokens.json');
-}
-
-function getDepotKeysPath() {
-  return path.join(getCacheDir(), 'depotkeys.json');
-}
-
 // ─── HTTP helpers ───
-function httpsGet(url, redirects = 0) {
+function httpsGetBuffer(url, headers = {}, redirects = 0) {
   return new Promise((resolve, reject) => {
     if (redirects > 5) { reject(new Error('Too many redirects')); return; }
-    https.get(url, (res) => {
+    const opts = new URL(url);
+    const reqOpts = {
+      hostname: opts.hostname,
+      path: opts.pathname + opts.search,
+      method: 'GET',
+      headers: { ...headers },
+    };
+    https.get(reqOpts, (res) => {
       if (res.statusCode === 302 || res.statusCode === 301) {
-        httpsGet(res.headers.location, redirects + 1).then(resolve).catch(reject);
+        res.resume();
+        httpsGetBuffer(res.headers.location, headers, redirects + 1).then(resolve).catch(reject);
         return;
       }
       if (res.statusCode !== 200) {
@@ -40,154 +47,113 @@ function httpsGet(url, redirects = 0) {
         reject(new Error(`HTTP ${res.statusCode}`));
         return;
       }
-      let data = '';
-      res.on('data', (chunk) => data += chunk);
-      res.on('end', () => resolve(data));
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => resolve(Buffer.concat(chunks)));
     }).on('error', reject);
   });
 }
 
-function httpsDownloadFile(url, dest, redirects = 0) {
-  return new Promise((resolve, reject) => {
-    if (redirects > 5) { reject(new Error('Too many redirects')); return; }
-    const file = fs.createWriteStream(dest);
-    https.get(url, (res) => {
-      if (res.statusCode === 302 || res.statusCode === 301) {
-        file.close();
-        httpsDownloadFile(res.headers.location, dest, redirects + 1).then(resolve).catch(reject);
-        return;
-      }
-      if (res.statusCode !== 200) {
-        file.close();
-        fs.unlinkSync(dest);
-        reject(new Error(`HTTP ${res.statusCode}`));
-        return;
-      }
-      res.pipe(file);
-      file.on('finish', () => { file.close(); resolve(true); });
-      file.on('error', reject);
-    }).on('error', reject);
-  });
+function httpsGetText(url, headers = {}, redirects = 0) {
+  return httpsGetBuffer(url, headers, redirects).then(b => b.toString('utf-8'));
 }
 
-// ─── Database sync (fetch appaccesstokens.json + depotkeys.json) ───
-async function syncManifestDatabase() {
-  const cacheDir = getCacheDir();
-  if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
-
-  const results = { tokens: false, depotKeys: false, error: null };
-
-  try {
-    const tokensRaw = await httpsGet(`https://raw.githubusercontent.com/${MANIFEST_HUB_REPO}/main/appaccesstokens.json`);
-    fs.writeFileSync(getTokensPath(), tokensRaw);
-    results.tokens = true;
-    results.tokenCount = Object.keys(JSON.parse(tokensRaw)).length;
-  } catch (err) {
-    results.error = `Failed to fetch appaccesstokens.json: ${err.message}`;
+// ─── Provider: Ryuu's Manifest API ───
+// GET /api/download/{appid}?file_type=manifest → ZIP with .manifest files
+// GET /api/download/{appid}?file_type=lua     → .lua script
+// Auth: X-Auth-Key header (free key from generator.ryuu.lol)
+async function ryuuDownloadManifests(appId, authKey) {
+  if (!authKey) {
+    return { success: false, error: 'No Ryuu auth key set. Register at generator.ryuu.lol to get a free key.' };
   }
 
+  const headers = { 'X-Auth-Key': authKey };
+
   try {
-    const keysRaw = await httpsGet(`https://raw.githubusercontent.com/${MANIFEST_HUB_REPO}/main/depotkeys.json`);
-    fs.writeFileSync(getDepotKeysPath(), keysRaw);
-    results.depotKeys = true;
-    results.keyCount = Object.keys(JSON.parse(keysRaw)).length;
-  } catch (err) {
-    if (!results.error) results.error = `Failed to fetch depotkeys.json: ${err.message}`;
-  }
-
-  return results;
-}
-
-// ─── Look up access token for an AppID ───
-function getAccessToken(appId) {
-  const tokensPath = getTokensPath();
-  if (!fs.existsSync(tokensPath)) return null;
-  try {
-    const tokens = JSON.parse(fs.readFileSync(tokensPath, 'utf-8'));
-    return tokens[String(appId)] || null;
-  } catch { return null; }
-}
-
-// ─── Look up depot key for a depot ID ───
-function getDepotKey(depotId) {
-  const keysPath = getDepotKeysPath();
-  if (!fs.existsSync(keysPath)) return null;
-  try {
-    const keys = JSON.parse(fs.readFileSync(keysPath, 'utf-8'));
-    return keys[String(depotId)] || null;
-  } catch { return null; }
-}
-
-// ─── Get depot IDs and manifest IDs for an AppID ───
-// Uses the Steam store API to get depot info, falls back to PICS API
-async function getAppDepots(appId) {
-  // Method 1: Steam store API (public, no auth needed)
-  try {
-    const raw = await httpsGet(`https://store.steampowered.com/api/appdetails?appids=${appId}&cc=us&l=en`);
-    const data = JSON.parse(raw);
-    const appData = data[String(appId)];
-    if (appData && appData.success && appData.data && appData.data.depots) {
-      const depots = [];
-      const depotMap = appData.data.depots;
-      for (const [depotId, info] of Object.entries(depotMap)) {
-        // Skip branch/group/metadata entries that aren't real depots
-        if (depotId === 'branches' || depotId === 'baselanguages' || typeof info !== 'object') continue;
-        if (!info.manifests && !info.manifest) continue;
-
-        // Handle both formats: { manifests: { "0": { gid: "...", size: ... } } } and { manifest: { gid: "..." } }
-        let manifestId = null;
-        let size = null;
-        if (info.manifests) {
-          const firstKey = Object.keys(info.manifests)[0];
-          if (firstKey) {
-            manifestId = info.manifests[firstKey].gid || info.manifests[firstKey];
-            size = info.manifests[firstKey].size;
-          }
-        } else if (info.manifest) {
-          manifestId = info.manifest.gid || info.manifest;
-          size = info.manifest.size;
-        }
-
-        if (manifestId) {
-          depots.push({
-            depotId: String(depotId),
-            manifestId: String(manifestId),
-            size,
-          });
-        }
-      }
-      if (depots.length > 0) return depots;
+    // Download manifests ZIP
+    const zipBuffer = await httpsGetBuffer(`${RYUU_API}/${appId}?file_type=manifest`, headers);
+    if (zipBuffer.length < 100) {
+      return { success: false, error: 'Received empty or too-small response from Ryuu API' };
     }
+
+    // Check if it's actually a ZIP (PK signature)
+    if (zipBuffer[0] !== 0x50 || zipBuffer[1] !== 0x4b) {
+      // Might be an error response in JSON/text
+      const text = zipBuffer.toString('utf-8');
+      return { success: false, error: `Ryuu API error: ${text.substring(0, 200)}` };
+    }
+
+    // Also try to get the .lua file
+    let luaContent = null;
+    try {
+      const luaBuffer = await httpsGetBuffer(`${RYUU_API}/${appId}?file_type=lua`, headers);
+      if (luaBuffer.length > 10 && luaBuffer[0] !== 0x50) {
+        luaContent = luaBuffer.toString('utf-8');
+      }
+    } catch {}
+
+    return { success: true, zipBuffer, luaContent };
   } catch (err) {
-    // Fall through to method 2
+    return { success: false, error: `Ryuu API error: ${err.message}` };
   }
-
-  // Method 2: Steam PICS API (anonymous access via content server)
-  // Get the latest manifest IDs by querying the Steam CDN
-  try {
-    const raw = await httpsGet(`https://api.steampowered.com/ISteamApps/GetAppList/v2/`);
-    // This only gives app names, not depot info. We need a different approach.
-    // For now, return empty - the user will need to provide depot/manifest IDs manually
-  } catch {}
-
-  return [];
 }
 
-// ─── Fetch a manifest file from ManifestHub API ───
-async function fetchManifestFromHub(depotId, manifestId, apiKey) {
-  if (!apiKey) {
-    return { success: false, error: 'No ManifestHub API key provided. Get a free key at ' + MANIFEST_HUB_KEYSITE };
-  }
-
-  const url = `${MANIFEST_HUB_API}?apikey=${encodeURIComponent(apiKey)}&depotid=${encodeURIComponent(depotId)}&manifestid=${encodeURIComponent(manifestId)}`;
-
+// ─── Provider: DepotBox (validation + manifest check) ───
+async function depotboxValidateManifest(depotId, manifestId) {
   try {
-    const data = await httpsGet(url);
-    // The API returns the manifest as binary data
-    return { success: true, data: Buffer.from(data, 'binary') };
+    const body = JSON.stringify({
+      manifests: [{ depot_id: Number(depotId), manifest_id: String(manifestId) }]
+    });
+    const response = await fetch(`${DEPOTBOX_API}/validate/manifests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+    const data = await response.json();
+    return data;
   } catch (err) {
-    return { success: false, error: `ManifestHub API error: ${err.message}` };
+    return { error: err.message };
   }
+}
+
+// ─── Extract ZIP to directory ───
+async function extractZip(zipBuffer, destDir) {
+  // Use the bundled 7za to extract
+  const sevenBin = require('7zip-bin');
+  let sevenPath = sevenBin.path7za;
+  if (sevenPath.includes('app.asar') && !sevenPath.includes('app.asar.unpacked')) {
+    sevenPath = sevenPath.replace('app.asar', 'app.asar.unpacked');
+  }
+  if (!fs.existsSync(sevenPath)) {
+    return { success: false, error: `7za binary not found at ${sevenPath}` };
+  }
+  try { fs.chmodSync(sevenPath, 0o755); } catch {}
+
+  const tempZip = path.join(app.getPath('temp'), `vex-manifest-${Date.now()}.zip`);
+  fs.writeFileSync(tempZip, zipBuffer);
+
+  if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+
+  const { execSync } = require('child_process');
+  execSync(`"${sevenPath}" x "${tempZip}" -o"${destDir}" -y`, { stdio: 'ignore' });
+
+  try { fs.unlinkSync(tempZip); } catch {}
+
+  // List extracted files
+  const files = [];
+  function walkDir(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walkDir(fullPath);
+      } else {
+        files.push(fullPath);
+      }
+    }
+  }
+  walkDir(destDir);
+
+  return { success: true, files };
 }
 
 // ─── Get Steam depotcache path ───
@@ -199,204 +165,136 @@ function getDepotCachePath(steamPath) {
   return cachePath;
 }
 
-// ─── Create a minimal appmanifest_<AppID>.acf ───
-function createAppManifest(steamPath, appId, gameName, depots) {
-  const manifestPath = path.join(steamPath, 'steamapps', `appmanifest_${appId}.acf`);
-
-  // Check if manifest already exists — don't overwrite if it does
-  if (fs.existsSync(manifestPath)) {
-    return { success: true, path: manifestPath, existed: true };
-  }
-
-  const installedDepots = {};
-  for (const depot of depots) {
-    installedDepots[depot.depotId] = {
-      manifest: depot.manifestId,
-      size: depot.size || 0,
-      download: 0,
-    };
-  }
-
-  // Build the ACF file (Steam's KeyValue format)
-  const acf = `"appinfo"
-{
-  "appid"
-  {
-    "appid"   "${appId}"
-  }
-  "name"   "${gameName || `App ${appId}`}"
-  "Universe"   "1"
-  "installdir"   "${(gameName || `App ${appId}`).replace(/[<>:"/\\|?*]/g, '')}"
-  "StateFlags"   "4"
-  "TargetBuildID"   ""
-  "AutoUpdateBehavior"   "0"
-  "ScheduledAutoUpdate"   ""
-  "AllowOtherDownloadsWhileRunning"   "0"
-  "SlowdownEnabled"   "0"
-  "BytesToDownload"   "0"
-  "BytesDownloaded"   "0"
-  "BytesToStage"   "0"
-  "BytesStaged"   "0"
-  "BuildID"   ""
-  "LastUpdate"   ""
-  "SizeOnDisk"   "0"
-  "InstalledDepots"
-  {
-${Object.entries(installedDepots).map(([depotId, info]) =>
-`    "${depotId}"
-    {
-      "manifest"   "${info.manifest}"
-      "size"   "${info.size}"
-      "download"   "${info.download}"
-    }`).join('\n')}
-  }
-}
-`;
-
-  fs.writeFileSync(manifestPath, acf, 'utf-8');
-  return { success: true, path: manifestPath, existed: false };
-}
-
 // ─── Main: fetch and apply manifests for a game ───
-async function applyManifestsForApp(appId, gameName, steamPath, apiKey) {
+async function applyManifestsForApp(appId, gameName, steamPath, authKey) {
   const results = {
     success: false,
     appId,
-    depotsFound: 0,
-    manifestsFetched: 0,
-    manifestsCached: 0,
-    appManifestCreated: false,
-    depotKeyAvailable: 0,
+    provider: 'ryuu',
+    manifestsExtracted: 0,
+    luaWritten: false,
+    acfCreated: false,
     errors: [],
   };
 
-  // 1. Ensure database is synced
-  if (!fs.existsSync(getTokensPath()) || !fs.existsSync(getDepotKeysPath())) {
-    const syncResult = await syncManifestDatabase();
-    if (!syncResult.tokens && !syncResult.depotKeys) {
-      results.errors.push('Failed to sync manifest database');
+  // 1. Download manifests from Ryuu's API
+  const dlResult = await ryuuDownloadManifests(appId, authKey);
+  if (!dlResult.success) {
+    results.errors.push(dlResult.error);
+
+    // Try fallback: ManifestHub2 (SSMGAlt fork)
+    results.provider = 'manifesthub2';
+    const mhResult = await tryManifestHub2(appId, steamPath, authKey);
+    if (!mhResult.success) {
+      results.errors.push(mhResult.error);
       return results;
     }
-  }
-
-  // 2. Get depot IDs and manifest IDs for the app
-  const depots = await getAppDepots(appId);
-  if (depots.length === 0) {
-    results.errors.push('Could not find depot info for this AppID (Steam store API returned no depots)');
+    results.manifestsExtracted = mhResult.manifestsExtracted || 0;
+    results.acfCreated = mhResult.acfCreated || false;
+    results.luaWritten = mhResult.luaWritten || false;
+    results.success = results.manifestsExtracted > 0;
     return results;
   }
-  results.depotsFound = depots.length;
 
-  // 3. For each depot, fetch manifest from ManifestHub and cache it
+  // 2. Extract manifest ZIP to depotcache
   const depotCachePath = getDepotCachePath(steamPath);
-
-  for (const depot of depots) {
-    // Check if we have the depot key
-    const depotKey = getDepotKey(depot.depotId);
-    if (depotKey) {
-      results.depotKeyAvailable++;
-    }
-
-    // Fetch manifest from ManifestHub
-    const manifestResult = await fetchManifestFromHub(depot.depotId, depot.manifestId, apiKey);
-    if (manifestResult.success) {
-      results.manifestsFetched++;
-
-      // Save to depotcache
-      const manifestFileName = `${depot.depotId}_${depot.manifestId}.manifest`;
-      const manifestFilePath = path.join(depotCachePath, manifestFileName);
-      try {
-        fs.writeFileSync(manifestFilePath, manifestResult.data);
-        results.manifestsCached++;
-      } catch (err) {
-        results.errors.push(`Failed to write manifest ${manifestFileName}: ${err.message}`);
-      }
-    } else {
-      results.errors.push(`Depot ${depot.depotId}: ${manifestResult.error}`);
-    }
+  const extractResult = await extractZip(dlResult.zipBuffer, depotCachePath);
+  if (!extractResult.success) {
+    results.errors.push(`Extraction failed: ${extractResult.error}`);
+    return results;
   }
 
-  // 4. Create appmanifest ACF file
-  const acfResult = createAppManifest(steamPath, appId, gameName, depots);
-  results.appManifestCreated = !acfResult.existed;
-  results.acfPath = acfResult.path;
+  // Count .manifest files
+  const manifestFiles = extractResult.files.filter(f => f.endsWith('.manifest'));
+  results.manifestsExtracted = manifestFiles.length;
+  results.manifestFiles = manifestFiles.map(f => path.basename(f));
 
-  // 5. Also save depot keys to a Lua config so SLSsteam can use them
-  if (results.depotKeyAvailable > 0) {
+  // 3. Write Lua file if provided
+  if (dlResult.luaContent) {
     try {
-      const luaPath = path.join(steamPath, 'config', 'stplug-in', `${appId}.lua`);
-      const luaDir = path.dirname(luaPath);
+      const luaDir = path.join(steamPath, 'config', 'stplug-in');
       if (!fs.existsSync(luaDir)) fs.mkdirSync(luaDir, { recursive: true });
-
-      let luaContent = `-- Vex auto-generated depot keys for AppID ${appId}\n`;
-      for (const depot of depots) {
-        const key = getDepotKey(depot.depotId);
-        if (key) {
-          luaContent += `-- Depot ${depot.depotId} key\n`;
-          luaContent += `set_depot_key("${depot.depotId}", "${key}")\n`;
-        }
-      }
-      fs.writeFileSync(luaPath, luaContent, 'utf-8');
-      results.luaKeysWritten = true;
+      const luaPath = path.join(luaDir, `${appId}.lua`);
+      fs.writeFileSync(luaPath, dlResult.luaContent, 'utf-8');
+      results.luaWritten = true;
+      results.luaPath = luaPath;
     } catch (err) {
-      results.errors.push(`Failed to write Lua depot keys: ${err.message}`);
+      results.errors.push(`Failed to write Lua: ${err.message}`);
     }
   }
 
-  results.success = results.manifestsCached > 0 || results.appManifestCreated;
+  // 4. Create minimal appmanifest ACF if it doesn't exist
+  const acfPath = path.join(steamPath, 'steamapps', `appmanifest_${appId}.acf`);
+  if (!fs.existsSync(acfPath)) {
+    try {
+      const acf = `"appinfo"\n{\n  "appid"\n  {\n    "appid"   "${appId}"\n  }\n  "name"   "${gameName || `App ${appId}`}"\n  "Universe"   "1"\n  "installdir"   "${(gameName || `App ${appId}`).replace(/[<>:"/\\\\|?*]/g, '')}"\n  "StateFlags"   "4"\n  "AutoUpdateBehavior"   "0"\n  "BytesToDownload"   "0"\n  "BytesDownloaded"   "0"\n  "SizeOnDisk"   "0"\n  "InstalledDepots"\n  {\n${manifestFiles.map(f => {
+    const match = f.match(/(\d+)_(\d+)\.manifest$/);
+    if (!match) return '';
+    return `    "${match[1]}"\n    {\n      "manifest"   "${match[2]}"\n      "size"   "0"\n      "download"   "0"\n    }\n`;
+  }).join('')}  }\n}\n`;
+      fs.writeFileSync(acfPath, acf, 'utf-8');
+      results.acfCreated = true;
+      results.acfPath = acfPath;
+    } catch (err) {
+      results.errors.push(`Failed to create ACF: ${err.message}`);
+    }
+  } else {
+    results.acfCreated = false;
+    results.acfPath = acfPath;
+  }
+
+  results.success = results.manifestsExtracted > 0;
   return results;
 }
 
-// ─── Get database stats ───
-function getDatabaseStats() {
-  const stats = {
-    tokensCached: false,
-    keysCached: false,
-    tokenCount: 0,
-    keyCount: 0,
-    lastSync: null,
-  };
-
-  const tokensPath = getTokensPath();
-  const keysPath = getDepotKeysPath();
-
-  if (fs.existsSync(tokensPath)) {
-    try {
-      const tokens = JSON.parse(fs.readFileSync(tokensPath, 'utf-8'));
-      stats.tokensCached = true;
-      stats.tokenCount = Object.keys(tokens).length;
-    } catch {}
+// ─── Fallback: ManifestHub2 (SSMGAlt fork) ───
+async function tryManifestHub2(appId, steamPath, apiKey) {
+  // The SSMGAlt fork uses the same API endpoint — check if it's online
+  try {
+    const testBuffer = await httpsGetBuffer(`${MANIFEST_HUB_API}?apikey=test&depotid=0&manifestid=0`);
+    return { success: false, error: 'ManifestHub2 API is also offline (same server as original)' };
+  } catch {
+    return { success: false, error: 'ManifestHub2 API is offline (same server as original ManifestHub)' };
   }
-
-  if (fs.existsSync(keysPath)) {
-    try {
-      const keys = JSON.parse(fs.readFileSync(keysPath, 'utf-8'));
-      stats.keysCached = true;
-      stats.keyCount = Object.keys(keys).length;
-    } catch {}
-  }
-
-  return stats;
 }
 
-// ─── Check if an AppID exists in the database ───
-function isAppInDatabase(appId) {
-  const tokensPath = getTokensPath();
-  if (!fs.existsSync(tokensPath)) return false;
+// ─── Check provider status ───
+async function checkProviderStatus() {
+  const status = {
+    ryuu: { online: false, url: RYUU_BASE },
+    depotbox: { online: false, url: DEPOTBOX_BASE },
+    manifesthub: { online: false, url: MANIFEST_HUB_KEYSITE },
+  };
+
+  // Check Ryuu
   try {
-    const tokens = JSON.parse(fs.readFileSync(tokensPath, 'utf-8'));
-    return String(appId) in tokens;
-  } catch { return false; }
+    await httpsGetText(RYUU_BASE);
+    status.ryuu.online = true;
+  } catch {}
+
+  // Check DepotBox
+  try {
+    await httpsGetText(DEPOTBOX_BASE);
+    status.depotbox.online = true;
+  } catch {}
+
+  // Check ManifestHub
+  try {
+    await httpsGetBuffer(MANIFEST_HUB_API);
+    status.manifesthub.online = true;
+  } catch {}
+
+  return status;
 }
 
 module.exports = {
-  syncManifestDatabase,
-  getAccessToken,
-  getDepotKey,
-  getAppDepots,
   applyManifestsForApp,
-  getDatabaseStats,
-  isAppInDatabase,
+  checkProviderStatus,
+  ryuuDownloadManifests,
+  depotboxValidateManifest,
+  extractZip,
   getCacheDir,
+  RYUU_BASE,
+  DEPOTBOX_BASE,
   MANIFEST_HUB_KEYSITE,
 };

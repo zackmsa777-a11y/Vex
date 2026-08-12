@@ -67,28 +67,23 @@ window.VexSettings = {
   async loadManifestDB() {
     const statusEl = document.getElementById('manifest-db-status');
     if (!statusEl) return;
-    statusEl.innerHTML = '<p style="color: var(--color-text-muted); font-size: 12px;">Checking database...</p>';
+    statusEl.innerHTML = '<p style="color: var(--color-text-muted); font-size: 12px;">Checking...</p>';
     try {
-      const stats = await window.vex?.manifests.stats();
-      const apiKey = await window.vex?.manifests.getApiKey();
-      const keyInput = document.getElementById('manifesthub-api-key');
-      if (keyInput) keyInput.value = apiKey || '';
+      const authKey = await window.vex?.manifests.getKey();
+      const keyInput = document.getElementById('ryuu-auth-key');
+      if (keyInput) keyInput.value = authKey || '';
       statusEl.innerHTML = `
         <div class="tool-item">
-          <span class="${stats.tokensCached ? 'check' : 'cross'}">${stats.tokensCached ? '✓' : '✗'}</span>
-          <span>Access tokens: ${stats.tokensCached ? stats.tokenCount + ' apps cached' : 'not synced'}</span>
+          <span class="${authKey ? 'check' : 'cross'}">${authKey ? '✓' : '✗'}</span>
+          <span>Ryuu Auth Key: ${authKey ? 'configured' : 'not set (register at generator.ryuu.lol)'}</span>
         </div>
         <div class="tool-item">
-          <span class="${stats.keysCached ? 'check' : 'cross'}">${stats.keysCached ? '✓' : '✗'}</span>
-          <span>Depot keys: ${stats.keysCached ? stats.keyCount + ' depots cached' : 'not synced'}</span>
-        </div>
-        <div class="tool-item">
-          <span class="${apiKey ? 'check' : 'cross'}">${apiKey ? '✓' : '✗'}</span>
-          <span>API Key: ${apiKey ? 'configured' : 'not set (get free key at manifesthub1.filegear-sg.me)'}</span>
+          <span class="check">i</span>
+          <span>Provider: Ryuu's Manifest API (50 free downloads/day)</span>
         </div>
       `;
     } catch {
-      statusEl.innerHTML = '<p style="color: var(--color-danger); font-size: 12px;">Could not check manifest database</p>';
+      statusEl.innerHTML = '<p style="color: var(--color-danger); font-size: 12px;">Could not check manifest settings</p>';
     }
   },
 
@@ -204,27 +199,35 @@ document.getElementById('browse-so-btn').addEventListener('click', async () => {
 });
 
 // ─── Manifest Database ───
-document.getElementById('manifest-sync-btn').addEventListener('click', async () => {
-  showToast('Syncing manifest database...');
-  const result = await window.vex?.manifests.sync();
-  if (result?.tokens || result?.depotKeys) {
-    showToast(`Database synced: ${result.tokenCount || 0} tokens, ${result.keyCount || 0} keys`, 'success');
-    await window.VexSettings.loadManifestDB();
-  } else {
-    showToast(`Sync failed: ${result?.error || 'Unknown error'}`, 'error');
-  }
-});
-
-document.getElementById('manifesthub-save-btn').addEventListener('click', async () => {
-  const key = document.getElementById('manifesthub-api-key').value.trim();
-  await window.vex?.manifests.setApiKey(key);
-  showToast('API key saved', 'success');
+document.getElementById('ryuu-save-btn').addEventListener('click', async () => {
+  const key = document.getElementById('ryuu-auth-key').value.trim();
+  await window.vex?.manifests.setKey(key);
+  showToast('Auth key saved', 'success');
   await window.VexSettings.loadManifestDB();
 });
 
-document.getElementById('manifesthub-link')?.addEventListener('click', (e) => {
+document.getElementById('ryuu-link')?.addEventListener('click', (e) => {
   e.preventDefault();
-  window.vex?.system.openExternal('https://manifesthub1.filegear-sg.me/');
+  window.vex?.system.openExternal('https://generator.ryuu.lol/');
+});
+
+document.getElementById('manifest-check-status-btn')?.addEventListener('click', async () => {
+  showToast('Checking provider status...');
+  try {
+    const status = await window.vex?.manifests.status();
+    if (status?.error) {
+      showToast(`Status check failed: ${status.error}`, 'error');
+      return;
+    }
+    const providers = [];
+    if (status?.ryuu?.online) providers.push('Ryuu: Online');
+    if (status?.depotbox?.online) providers.push('DepotBox: Online');
+    if (status?.manifesthub?.online) providers.push('ManifestHub: Online');
+    if (providers.length === 0) providers.push('All providers offline');
+    showToast(`Provider status: ${providers.join(', ')}`, providers.length > 0 ? 'success' : 'error');
+  } catch (err) {
+    showToast(`Status check failed: ${err.message}`, 'error');
+  }
 });
 
 // Load settings on init
