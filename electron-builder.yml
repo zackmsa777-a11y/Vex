@@ -1,0 +1,18 @@
+appId: com.vex.launcher
+productName: Vex
+directories:
+  output: dist
+files:
+  - src/**/*
+linux:
+  target:
+    - AppImage
+  category: Game
+  icon: src/renderer/assets/icon.png
+  desktop:
+    Name: Vex
+    Comment: Linux-first Steam game setup companion
+    Categories: Game;Utility;
+    Terminal: false
+    StartupWMClass: Vex
+    MimeType: x-scheme-handler/vex;

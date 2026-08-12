@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vex</title>
+  <link rel="stylesheet" href="styles/main.css" />
+</head>
+<body>
+  <!-- Title bar (frameless window) -->
+  <div id="titlebar">
+    <div class="titlebar-drag"></div>
+    <div class="titlebar-controls">
+      <button id="min-btn" title="Minimize">─</button>
+      <button id="max-btn" title="Maximize">▢</button>
+      <button id="close-btn" title="Close">✕</button>
+    </div>
+  </div>
+
+  <!-- App shell -->
+  <div id="app">
+    <!-- Sidebar -->
+    <nav id="sidebar">
+      <div class="sidebar-brand">
+        <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M6 12h4M8 10v4M15 13v.01M18 11v.01M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.687 4.078-1.522 7.922-1.522 9.41a2 2 0 0 0 2 2 2 2 0 0 0 1.6-.8l1.8-2.4a2 2 0 0 1 1.6-.8h3.426a2 2 0 0 1 1.6.8l1.8 2.4a2 2 0 0 0 1.6.8a2 2 0 0 0 2-2c0-1.488-.835-5.332-1.522-9.41A4 4 0 0 0 17.32 5z"/>
+        </svg>
+        <span class="sidebar-title">Vex</span>
+      </div>
+      <ul class="sidebar-nav">
+        <li class="nav-item active" data-tab="home">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <span>Home</span>
+        </li>
+        <li class="nav-item" data-tab="store">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          <span>Store</span>
+        </li>
+        <li class="nav-item" data-tab="library">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          <span>Library</span>
+        </li>
+        <li class="nav-item" data-tab="downloads">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>Downloads</span>
+        </li>
+        <li class="nav-item" data-tab="bypass">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span>Bypass</span>
+        </li>
+        <li class="nav-item" data-tab="onlinefix">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          <span>OnlineFix</span>
+        </li>
+        <li class="nav-item" data-tab="settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Settings</span>
+        </li>
+      </ul>
+      <div class="sidebar-footer">
+        <div class="steam-status" id="steam-status">
+          <span class="status-dot offline"></span>
+          <span class="status-text">Steam: Offline</span>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main content area -->
+    <main id="content">
+      <!-- HOME TAB -->
+      <section id="tab-home" class="tab-content active">
+        <div class="tab-header">
+          <h1>Home</h1>
+          <div class="tab-actions">
+            <label class="toggle">
+              <input type="checkbox" id="auto-refresh" checked />
+              <span class="toggle-slider"></span>
+              <span class="toggle-label">Auto-refresh</span>
+            </label>
+            <button class="btn btn-primary" id="add-game-btn">+ Add Game</button>
+          </div>
+        </div>
+        <div id="home-grid" class="game-grid"></div>
+        <div id="home-empty" class="empty-state hidden">
+          <div class="empty-icon">🎮</div>
+          <p>No games yet — click Add Game to get started</p>
+        </div>
+      </section>
+
+      <!-- STORE TAB -->
+      <section id="tab-store" class="tab-content">
+        <div class="tab-header">
+          <h1>Store</h1>
+          <div class="search-bar">
+            <input type="text" id="store-search" placeholder="Search the IGDB database..." />
+            <button class="btn btn-ghost" id="store-search-btn">Search</button>
+          </div>
+        </div>
+        <div id="store-hero" class="hero-carousel"></div>
+        <div id="store-trending" class="game-section">
+          <h2>Trending Now</h2>
+          <div class="game-row" id="trending-grid"></div>
+        </div>
+        <div id="store-genres" class="genre-chips">
+          <button class="genre-chip active" data-genre="all">All</button>
+          <button class="genre-chip" data-genre="Action">Action</button>
+          <button class="genre-chip" data-genre="RPG">RPG</button>
+          <button class="genre-chip" data-genre="Shooter">Shooter</button>
+          <button class="genre-chip" data-genre="Adventure">Adventure</button>
+          <button class="genre-chip" data-genre="Strategy">Strategy</button>
+          <button class="genre-chip" data-genre="Indie">Indie</button>
+          <button class="genre-chip" data-genre="Sports">Sports</button>
+          <button class="genre-chip" data-genre="Racing">Racing</button>
+        </div>
+        <div id="store-new" class="game-section">
+          <h2>New Releases</h2>
+          <div class="game-grid" id="new-releases-grid"></div>
+          <div class="pagination" id="store-pagination"></div>
+        </div>
+      </section>
+
+      <!-- LIBRARY TAB -->
+      <section id="tab-library" class="tab-content">
+        <div class="tab-header">
+          <h1>Library</h1>
+          <button class="btn btn-ghost" id="library-rescan">↻ Rescan</button>
+        </div>
+        <div id="library-grid" class="game-grid"></div>
+        <div id="library-empty" class="empty-state hidden">
+          <div class="empty-icon">📚</div>
+          <p>No installed games found. Make sure Steam is running and games are installed.</p>
+        </div>
+      </section>
+
+      <!-- DOWNLOADS TAB -->
+      <section id="tab-downloads" class="tab-content">
+        <div class="tab-header">
+          <h1>Downloads</h1>
+        </div>
+        <div class="provider-bar" id="provider-bar">
+          <span class="provider-badge" data-provider="gofile">GoFile</span>
+          <span class="provider-badge" data-provider="buzzheavier">Buzzheavier</span>
+          <span class="provider-badge" data-provider="megadb">MegaDB</span>
+          <span class="provider-badge" data-provider="rootz">Rootz</span>
+          <span class="provider-badge" data-provider="webtorrent">WebTorrent</span>
+        </div>
+        <div id="downloads-active" class="downloads-section">
+          <h2>Active Downloads</h2>
+          <div id="active-downloads-list"></div>
+        </div>
+        <div id="downloads-history" class="downloads-section">
+          <h2>Download History</h2>
+          <div id="history-list"></div>
+        </div>
+      </section>
+
+      <!-- BYPASS TAB -->
+      <section id="tab-bypass" class="tab-content">
+        <div class="tab-header">
+          <h1>Bypass</h1>
+          <p class="tab-subtitle">Select a platform to browse available bypasses</p>
+        </div>
+        <div id="bypass-platforms" class="bypass-platforms">
+          <button class="bypass-platform active" data-platform="ubisoft" data-color="#7C3AED">
+            <span class="bypass-platform-icon">U</span>
+            <span class="bypass-platform-name">Ubisoft</span>
+          </button>
+          <button class="bypass-platform" data-platform="ea" data-color="#FF4C4C">
+            <span class="bypass-platform-icon">EA</span>
+            <span class="bypass-platform-name">EA</span>
+          </button>
+          <button class="bypass-platform" data-platform="rockstar" data-color="#FFBF4B">
+            <span class="bypass-platform-icon">R</span>
+            <span class="bypass-platform-name">Rockstar</span>
+          </button>
+          <button class="bypass-platform" data-platform="denuvo" data-color="#E5E7EB">
+            <span class="bypass-platform-icon">D</span>
+            <span class="bypass-platform-name">Denuvo</span>
+          </button>
+          <button class="bypass-platform" data-platform="playstation" data-color="#4F7CFF">
+            <span class="bypass-platform-icon">PS</span>
+            <span class="bypass-platform-name">PlayStation</span>
+          </button>
+          <button class="bypass-platform" data-platform="other" data-color="#E9B5FF">
+            <span class="bypass-platform-icon">+</span>
+            <span class="bypass-platform-name">Other</span>
+          </button>
+        </div>
+        <div id="bypass-games" class="bypass-games-grid"></div>
+        <div id="bypass-detail" class="bypass-detail hidden"></div>
+      </section>
+
+      <!-- ONLINEFIX TAB -->
+      <section id="tab-onlinefix" class="tab-content">
+        <div class="tab-header">
+          <h1>OnlineFix</h1>
+          <div class="search-bar">
+            <input type="text" id="onlinefix-search" placeholder="Search online fixes..." />
+          </div>
+          <div class="sort-group">
+            <button class="sort-btn active" data-sort="recent">Recent</button>
+            <button class="sort-btn" data-sort="az">A-Z</button>
+          </div>
+          <span class="total-count" id="onlinefix-count">Loading...</span>
+        </div>
+        <div id="onlinefix-grid" class="onlinefix-grid"></div>
+        <div class="pagination" id="onlinefix-pagination"></div>
+      </section>
+
+      <!-- SETTINGS TAB -->
+      <section id="tab-settings" class="tab-content">
+        <div class="tab-header">
+          <h1>Settings</h1>
+        </div>
+        <div class="settings-sections">
+          <div class="settings-card">
+            <h3>Steam</h3>
+            <label>Steam Path</label>
+            <div class="input-row">
+              <input type="text" id="steam-path" placeholder="Auto-detected..." />
+              <button class="btn btn-ghost" id="detect-steam-btn">Detect</button>
+              <button class="btn btn-ghost" id="browse-steam-btn">Browse</button>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-primary" id="start-steam-btn">Start Steam</button>
+              <button class="btn btn-primary" id="restart-steam-btn">Restart Steam (with injection)</button>
+              <button class="btn btn-danger" id="stop-steam-btn">Stop Steam</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <h3>Linux Setup</h3>
+            <p class="settings-desc">Configure SLSsteam + library-inject.so injection for Steam integration</p>
+            <div id="linux-tools-status" class="tools-status"></div>
+            <button class="btn btn-primary" id="setup-sls-btn">Set up Linux tools (SLSsteam + .NET 9)</button>
+          </div>
+
+          <div class="settings-card">
+            <h3>Nexus (IGDB)</h3>
+            <p class="settings-desc">Synchronize metadata, covers, and global info using the IGDB database.</p>
+            <label>Client ID</label>
+            <input type="text" id="igdb-client-id" placeholder="Enter your Client ID..." />
+            <label>Client Secret</label>
+            <input type="password" id="igdb-client-secret" placeholder="••••••••••••••••" />
+            <div class="btn-row">
+              <button class="btn btn-ghost" id="igdb-save-btn">Save</button>
+              <button class="btn btn-primary" id="igdb-link-btn">Link Account</button>
+            </div>
+            <span class="status-text" id="igdb-status">Unlinked (Using default internal key)</span>
+          </div>
+
+          <div class="settings-card">
+            <h3>Download Sources</h3>
+            <p class="settings-desc">Sources are added from the Nexus Web portal.</p>
+            <button class="btn btn-ghost" id="open-nexus-web-btn">Open Nexus Web</button>
+            <div id="sources-list" class="sources-list"></div>
+          </div>
+
+          <div class="settings-card">
+            <h3>Custom .so Path</h3>
+            <label>Custom .so path (default: ~/.local/share/Steam/SLSteam.so)</label>
+            <div class="input-row">
+              <input type="text" id="custom-so-path" placeholder="~/.local/share/Steam/SLSteam.so" />
+              <button class="btn btn-ghost" id="browse-so-btn">Browse</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <h3>Preferences</h3>
+            <label class="toggle"><input type="checkbox" id="pref-autostart" /><span class="toggle-slider"></span><span class="toggle-label">Start with system</span></label>
+            <label class="toggle"><input type="checkbox" id="pref-autoupdate" checked /><span class="toggle-slider"></span><span class="toggle-label">Auto-check for updates</span></label>
+            <label class="toggle"><input type="checkbox" id="pref-autorefresh" checked /><span class="toggle-slider"></span><span class="toggle-label">Auto-refresh game list</span></label>
+          </div>
+
+          <div class="settings-card about-card">
+            <h3>About</h3>
+            <p>Vex v1.0.0 — Linux-first Steam game setup companion</p>
+            <p>Uses SLSsteam injection (LD_PRELOAD of SLSteam.so + library-inject.so)</p>
+            <div class="about-links">
+              <a href="#" id="github-link">GitHub</a>
+              <a href="#" id="discord-link">Discord</a>
+              <span>License: GPL-3.0</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Add Game Modal -->
+  <div id="add-game-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Add Game</h2>
+        <button class="modal-close" id="add-game-close">✕</button>
+      </div>
+      <div class="modal-tabs">
+        <button class="modal-tab active" data-tab="appid">Add by AppID</button>
+        <button class="modal-tab" data-tab="lua">Add by Lua Script</button>
+      </div>
+      <div class="modal-body">
+        <div id="modal-appid" class="modal-panel active">
+          <label>Steam AppID</label>
+          <input type="text" id="appid-input" placeholder="e.g. 1245620" />
+          <label>Game Name (optional)</label>
+          <input type="text" id="game-name-input" placeholder="e.g. Elden Ring" />
+          <button class="btn btn-primary" id="appid-submit">Add Game</button>
+        </div>
+        <div id="modal-lua" class="modal-panel">
+          <label>AppID</label>
+          <input type="text" id="lua-appid" placeholder="e.g. 1245620" />
+          <label>Game Name</label>
+          <input type="text" id="lua-name" placeholder="e.g. Elden Ring" />
+          <label>Lua Script (paste or drag a .lua file)</label>
+          <textarea id="lua-content" rows="10" placeholder="-- Paste your Lua script here"></textarea>
+          <div class="drop-zone" id="lua-drop-zone">Drop .lua file here or click to browse</div>
+          <input type="file" id="lua-file-input" accept=".lua" class="hidden" />
+          <button class="btn btn-primary" id="lua-submit">Add Game</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div id="toast-container"></div>
+
+  <script src="scripts/app.js"></script>
+  <script src="scripts/home.js"></script>
+  <script src="scripts/store.js"></script>
+  <script src="scripts/library.js"></script>
+  <script src="scripts/downloads.js"></script>
+  <script src="scripts/bypass.js"></script>
+  <script src="scripts/onlinefix.js"></script>
+  <script src="scripts/settings.js"></script>
+</body>
+</html>

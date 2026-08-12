@@ -1,0 +1,39 @@
+{
+  "name": "vex",
+  "version": "1.0.0",
+  "description": "Vex — Linux-first Steam game setup companion (SLSsteam + SFF workflow)",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --linux AppImage",
+    "build:all": "electron-builder --linux",
+    "rebuild": "electron-rebuild"
+  },
+  "author": "Vex",
+  "license": "GPL-3.0",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "extract-zip": "^2.0.1"
+  },
+  "build": {
+    "appId": "com.vex.launcher",
+    "productName": "Vex",
+    "directories": { "output": "dist" },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Game",
+      "icon": "src/renderer/assets/icon.png",
+      "desktop": {
+        "Name": "Vex",
+        "Comment": "Linux-first Steam game setup companion",
+        "Categories": "Game;Utility;",
+        "Terminal": "false",
+        "StartupWMClass": "Vex"
+      }
+    }
+  }
+}
