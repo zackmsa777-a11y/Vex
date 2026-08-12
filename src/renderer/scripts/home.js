@@ -48,13 +48,30 @@ window.VexHome = {
 document.getElementById('appid-submit').addEventListener('click', async () => {
   const appId = document.getElementById('appid-input').value.trim();
   const name = document.getElementById('game-name-input').value.trim() || `App ${appId}`;
+  const fetchManifests = document.getElementById('appid-fetch-manifests')?.checked ?? true;
   if (!appId) { showToast('Please enter an AppID', 'error'); return; }
 
   showToast('Adding game to SLSsteam config...');
   try {
     const result = await window.vex.lua.write(appId, name, null);
     if (result.success) {
-      showToast('Game added! Restart Steam to see it in your Steam library too.', 'success');
+      // Auto-fetch manifests if enabled
+      if (fetchManifests) {
+        showToast('Game added! Fetching manifests...', 'success');
+        try {
+          const manifestResult = await window.vex.manifests.apply(appId, name);
+          if (manifestResult.success) {
+            const msg = `Manifests applied: ${manifestResult.manifestsCached} cached, ${manifestResult.depotsFound} depots found`;
+            showToast(msg + '. Restart Steam to download.', 'success');
+          } else {
+            showToast(`Game added but manifests failed: ${manifestResult.error || 'No manifests fetched'}. You can try manually in Settings.`, 'error');
+          }
+        } catch (err) {
+          showToast(`Game added but manifest fetch failed: ${err.message}`, 'error');
+        }
+      } else {
+        showToast('Game added! Restart Steam to see it in your library.', 'success');
+      }
       closeModal('add-game-modal');
       document.getElementById('appid-input').value = '';
       document.getElementById('game-name-input').value = '';

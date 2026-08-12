@@ -34,6 +34,15 @@ contextBridge.exposeInMainWorld('vex', {
   nexus: {
     search: (query) => ipcRenderer.invoke('nexus:search', query),
   },
+  // Manifest Database
+  manifests: {
+    sync: () => ipcRenderer.invoke('manifests:sync'),
+    stats: () => ipcRenderer.invoke('manifests:stats'),
+    checkApp: (appId) => ipcRenderer.invoke('manifests:checkApp', appId),
+    apply: (appId, gameName) => ipcRenderer.invoke('manifests:apply', appId, gameName),
+    setApiKey: (key) => ipcRenderer.invoke('manifests:setApiKey', key),
+    getApiKey: () => ipcRenderer.invoke('manifests:getApiKey'),
+  },
   // Downloads
   downloads: {
     start: (opts) => ipcRenderer.invoke('downloads:start', opts),

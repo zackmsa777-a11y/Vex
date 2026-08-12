@@ -236,6 +236,20 @@
           </div>
 
           <div class="settings-card">
+            <h3>Manifest Database</h3>
+            <p class="settings-desc">Sync the manifest database so Vex can fetch depot manifests for your games. Get a free API key at <a href="#" id="manifesthub-link">manifesthub1.filegear-sg.me</a></p>
+            <div id="manifest-db-status" class="tools-status"></div>
+            <label>ManifestHub API Key</label>
+            <div class="input-row">
+              <input type="password" id="manifesthub-api-key" placeholder="Enter your API key..." />
+              <button class="btn btn-ghost" id="manifesthub-save-btn">Save</button>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-primary" id="manifest-sync-btn">Sync Database</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
             <h3>Nexus (IGDB)</h3>
             <p class="settings-desc">Synchronize metadata, covers, and global info using the IGDB database.</p>
             <label>Client ID</label>
@@ -274,7 +288,7 @@
 
           <div class="settings-card about-card">
             <h3>About</h3>
-            <p>Vex v1.0.0 — Linux-first Steam game setup companion</p>
+            <p>Vex v1.2.0 — Linux-first Steam game setup companion</p>
             <p>Uses SLSsteam injection (LD_PRELOAD of SLSteam.so + library-inject.so)</p>
             <div class="about-links">
               <a href="#" id="github-link">GitHub</a>
@@ -304,6 +318,7 @@
           <input type="text" id="appid-input" placeholder="e.g. 1245620" />
           <label>Game Name (optional)</label>
           <input type="text" id="game-name-input" placeholder="e.g. Elden Ring" />
+          <label class="toggle"><input type="checkbox" id="appid-fetch-manifests" checked /><span class="toggle-slider"></span><span class="toggle-label">Auto-fetch manifests (requires API key in Settings)</span></label>
           <button class="btn btn-primary" id="appid-submit">Add Game</button>
         </div>
         <div id="modal-lua" class="modal-panel">
