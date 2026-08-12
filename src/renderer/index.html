@@ -354,6 +354,57 @@
     </div>
   </div>
 
+  <!-- Confirm AppID Modal (used by Settings > Import Manifest ZIP) -->
+  <div id="confirm-appid-modal" class="modal hidden">
+    <div class="modal-content" style="max-width: 400px;">
+      <div class="modal-header">
+        <h2>Confirm Steam AppID</h2>
+        <button class="modal-close" id="confirm-appid-close">✕</button>
+      </div>
+      <div class="modal-panel active" style="padding: 16px;">
+        <p id="confirm-appid-hint" style="font-size: 12px; color: var(--color-text-muted); margin-bottom: 12px;"></p>
+        <label>Steam AppID</label>
+        <input type="text" id="confirm-appid-input" placeholder="e.g. 1245620" />
+        <label style="margin-top: 10px; display: block;">Game Name (optional)</label>
+        <input type="text" id="confirm-appid-name" placeholder="e.g. Elden Ring" />
+        <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end;">
+          <button class="btn btn-ghost" id="confirm-appid-cancel">Cancel</button>
+          <button class="btn btn-primary" id="confirm-appid-ok">Import</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generic Yes/No Confirm Modal (replaces window.confirm — not reliably supported in all Electron/Linux WM combos) -->
+  <div id="confirm-yesno-modal" class="modal hidden">
+    <div class="modal-content" style="max-width: 420px;">
+      <div class="modal-header">
+        <h2 id="confirm-yesno-title">Confirm</h2>
+        <button class="modal-close" id="confirm-yesno-close">✕</button>
+      </div>
+      <div class="modal-panel active" style="padding: 16px;">
+        <p id="confirm-yesno-message" style="font-size: 13px; white-space: pre-line; color: var(--color-text-muted);"></p>
+        <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end;">
+          <button class="btn btn-ghost" id="confirm-yesno-cancel">Cancel</button>
+          <button class="btn btn-danger" id="confirm-yesno-ok">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- View Lua Script Modal (replaces alert() for long text — Electron dialogs aren't reliable) -->
+  <div id="view-lua-modal" class="modal hidden">
+    <div class="modal-content" style="max-width: 600px;">
+      <div class="modal-header">
+        <h2>Lua Script</h2>
+        <button class="modal-close" id="view-lua-close">✕</button>
+      </div>
+      <div class="modal-panel active" style="padding: 16px;">
+        <pre id="view-lua-content" style="max-height: 400px; overflow-y: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; background: var(--color-bg-alt, rgba(0,0,0,0.2)); padding: 12px; border-radius: 6px;"></pre>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast notifications -->
   <div id="toast-container"></div>
 

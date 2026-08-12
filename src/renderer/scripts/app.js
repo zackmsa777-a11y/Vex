@@ -67,6 +67,88 @@ function closeModal(id) {
   document.getElementById(id)?.classList.add('hidden');
 }
 
+// ─── Generic Yes/No Confirm Modal ───
+// Replaces window.confirm() — Electron's support for native alert/confirm/prompt
+// dialogs varies by version/platform and has already bitten us once (prompt()
+// throws outright). Use a real in-app modal for anything that needs a Promise<boolean>.
+function showTextModal(text) {
+  document.getElementById('view-lua-content').textContent = text;
+  openModal('view-lua-modal');
+  const closeBtn = document.getElementById('view-lua-close');
+  const onClose = () => { closeModal('view-lua-modal'); closeBtn.removeEventListener('click', onClose); };
+  closeBtn.addEventListener('click', onClose);
+}
+
+function confirmYesNo(message, title) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('confirm-yesno-modal');
+    document.getElementById('confirm-yesno-title').textContent = title || 'Confirm';
+    document.getElementById('confirm-yesno-message').textContent = message || '';
+    const okBtn = document.getElementById('confirm-yesno-ok');
+    const cancelBtn = document.getElementById('confirm-yesno-cancel');
+    const closeBtn = document.getElementById('confirm-yesno-close');
+
+    const cleanup = () => {
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      closeBtn.removeEventListener('click', onCancel);
+      closeModal('confirm-yesno-modal');
+    };
+    const onOk = () => { cleanup(); resolve(true); };
+    const onCancel = () => { cleanup(); resolve(false); };
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    closeBtn.addEventListener('click', onCancel);
+
+    openModal('confirm-yesno-modal');
+  });
+}
+
+// ─── Confirm AppID Modal ───
+// Electron does NOT implement window.prompt() (it throws "not supported"),
+// so we use a real HTML modal instead. Returns a Promise that resolves to
+// { appId, gameName } or null if cancelled.
+function confirmAppIdModal(hint, defaultAppId, defaultName) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('confirm-appid-modal');
+    const hintEl = document.getElementById('confirm-appid-hint');
+    const appIdInput = document.getElementById('confirm-appid-input');
+    const nameInput = document.getElementById('confirm-appid-name');
+    const okBtn = document.getElementById('confirm-appid-ok');
+    const cancelBtn = document.getElementById('confirm-appid-cancel');
+    const closeBtn = document.getElementById('confirm-appid-close');
+
+    hintEl.textContent = hint || '';
+    appIdInput.value = defaultAppId || '';
+    nameInput.value = defaultName || '';
+
+    const cleanup = () => {
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      closeBtn.removeEventListener('click', onCancel);
+      closeModal('confirm-appid-modal');
+    };
+    const onOk = () => {
+      const appId = appIdInput.value.trim();
+      const gameName = nameInput.value.trim();
+      cleanup();
+      resolve(appId ? { appId, gameName: gameName || null } : { appId: null, gameName: gameName || null });
+    };
+    const onCancel = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    closeBtn.addEventListener('click', onCancel);
+
+    openModal('confirm-appid-modal');
+    appIdInput.focus();
+  });
+}
+
 // Add Game Modal tabs
 document.querySelectorAll('.modal-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -214,9 +296,13 @@ function showGameMenu(game, anchor) {
     { label: '▶ Play', action: () => launchGame(game) },
     { label: '📁 Open Steam config folder', action: () => window.vex?.system.openPath(`${game.steamPath || ''}/config/stplug-in`) },
     { label: '📄 View Lua', action: async () => {
-      const lua = await window.vex?.lua.read(appId);
-      if (lua) alert(lua);
-      else showToast('No Lua config found for this game', 'error');
+      try {
+        const lua = await window.vex?.lua.read(appId);
+        if (lua) showTextModal(lua);
+        else showToast('No Lua config found for this game', 'error');
+      } catch (err) {
+        showToast(`Could not read Lua: ${err.message}`, 'error');
+      }
     }},
     { label: '🗑 Remove game', action: async () => {
       await window.vex?.lua.delete(appId);

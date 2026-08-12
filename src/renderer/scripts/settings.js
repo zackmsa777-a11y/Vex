@@ -226,17 +226,17 @@ document.getElementById('manifest-import-zip-btn')?.addEventListener('click', as
       return;
     }
 
-    // Step 2: confirm/edit the AppID before we touch any files
-    const appId = window.prompt(
-      `Steam AppID for this game?\n(Guessed from filename: ${picked.guessedAppId || 'none found'})`,
-      picked.guessedAppId || ''
+    // Step 2: confirm/edit the AppID before we touch any files.
+    // Electron doesn't support window.prompt(), so we use a real modal.
+    const confirmed = await confirmAppIdModal(
+      `Guessed from filename: ${picked.guessedAppId || 'none found — please enter it manually'}`,
+      picked.guessedAppId,
+      picked.guessedName
     );
-    if (appId === null) { showToast('Import cancelled'); return; }
-
-    const gameName = window.prompt('Game name (optional):', picked.guessedName || '') || null;
+    if (!confirmed) { showToast('Import cancelled'); return; }
 
     showToast('Importing ZIP...');
-    const result = await window.vex.manifests.importZip(picked.zipPath, appId.trim() || null, gameName);
+    const result = await window.vex.manifests.importZip(picked.zipPath, confirmed.appId, confirmed.gameName);
 
     if (result?.success) {
       const parts = [];

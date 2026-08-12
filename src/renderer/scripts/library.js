@@ -57,10 +57,16 @@ window.VexLibrary = {
         removeBtn.className = 'btn btn-danger';
         removeBtn.textContent = '🗑 Remove';
         removeBtn.style.marginLeft = '8px';
-        removeBtn.addEventListener('click', (e) => {
+        removeBtn.addEventListener('click', async (e) => {
           e.stopPropagation();
-          if (confirm(`Remove "${game.name}" from Vex?\n\nThis will:\n• Delete the Lua script\n• Remove from SLSsteam config\n• Delete the appmanifest ACF file\n• Delete cached depot manifests\n\nThe game files on disk will NOT be deleted.`)) {
-            this.removeGame(game.appId, game.name);
+          try {
+            const ok = await confirmYesNo(
+              `Remove "${game.name}" from Vex?\n\nThis will:\n• Delete the Lua script\n• Remove from SLSsteam config\n• Delete the appmanifest ACF file\n• Delete cached depot manifests\n\nThe game files on disk will NOT be deleted.`,
+              'Remove Game'
+            );
+            if (ok) this.removeGame(game.appId, game.name);
+          } catch (err) {
+            showToast(`Remove failed unexpectedly: ${err.message}`, 'error');
           }
         });
         actions.appendChild(removeBtn);
