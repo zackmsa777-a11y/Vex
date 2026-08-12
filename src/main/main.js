@@ -570,6 +570,7 @@ function formatBytes(bytes) {
 
 // ─── Download System ───
 const downloadProviders = require('./downloads/providers');
+const manifestDB = require('./manifests');
 let activeDownloads = new Map();
 
 // ─── Nexus/IGDB API ───
@@ -622,6 +623,35 @@ function registerIPC() {
 
   // Nexus
   ipcMain.handle('nexus:search', async (_e, query) => fetchNexusGames(query));
+
+  // Manifest Database
+  ipcMain.handle('manifests:sync', async () => {
+    try {
+      return await manifestDB.syncManifestDatabase();
+    } catch (err) {
+      return { tokens: false, depotKeys: false, error: err.message };
+    }
+  });
+  ipcMain.handle('manifests:stats', async () => manifestDB.getDatabaseStats());
+  ipcMain.handle('manifests:checkApp', async (_e, appId) => manifestDB.isAppInDatabase(appId));
+  ipcMain.handle('manifests:apply', async (_e, appId, gameName) => {
+    const steamInfo = detectSteamPath();
+    if (!steamInfo) return { success: false, error: 'Steam path not found' };
+    const apiKey = getConfig('manifestHubApiKey', '');
+    if (!apiKey) {
+      return { success: false, error: `No ManifestHub API key set. Get a free key at ${manifestDB.MANIFEST_HUB_KEYSITE} and enter it in Settings.` };
+    }
+    try {
+      return await manifestDB.applyManifestsForApp(appId, gameName, steamInfo.path, apiKey);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+  ipcMain.handle('manifests:setApiKey', async (_e, key) => {
+    saveConfig('manifestHubApiKey', key);
+    return { success: true };
+  });
+  ipcMain.handle('manifests:getApiKey', async () => getConfig('manifestHubApiKey', ''));
 
   // Downloads
   ipcMain.handle('downloads:start', async (_e, opts) => {
