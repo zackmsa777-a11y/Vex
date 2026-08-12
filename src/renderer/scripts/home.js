@@ -54,7 +54,8 @@ document.getElementById('appid-submit').addEventListener('click', async () => {
   try {
     const result = await window.vex.lua.write(appId, name, null);
     if (result.success) {
-      showToast('Game added! Restart Steam to see it in your Steam library too.', 'success');
+      showToast('Game added. Opening Steam installer...', 'success');
+      window.vex.steam.installGame(appId);
       closeModal('add-game-modal');
       document.getElementById('appid-input').value = '';
       document.getElementById('game-name-input').value = '';
@@ -79,7 +80,8 @@ document.getElementById('lua-submit').addEventListener('click', async () => {
   try {
     const result = await window.vex.lua.write(appId, name, content);
     if (result.success) {
-      showToast('Game added! Restart Steam to see it in your Steam library too.', 'success');
+      showToast('Game added. Opening Steam installer...', 'success');
+      window.vex.steam.installGame(appId);
       closeModal('add-game-modal');
       document.getElementById('lua-appid').value = '';
       document.getElementById('lua-name').value = '';
