@@ -284,22 +284,53 @@ async function applyManifestsForApp(appId, gameName, steamPath, authKey) {
 
   // 4. Create minimal appmanifest ACF if it doesn't exist
   const acfPath = path.join(steamPath, 'steamapps', `appmanifest_${appId}.acf`);
-  if (!fs.existsSync(acfPath)) {
-    try {
-      const acf = `"appinfo"\n{\n  "appid"\n  {\n    "appid"   "${appId}"\n  }\n  "name"   "${gameName || `App ${appId}`}"\n  "Universe"   "1"\n  "installdir"   "${(gameName || `App ${appId}`).replace(/[<>:"/\\\\|?*]/g, '')}"\n  "StateFlags"   "4"\n  "AutoUpdateBehavior"   "0"\n  "BytesToDownload"   "0"\n  "BytesDownloaded"   "0"\n  "SizeOnDisk"   "0"\n  "InstalledDepots"\n  {\n${manifestFiles.map(f => {
-    const match = f.match(/(\d+)_(\d+)\.manifest$/);
-    if (!match) return '';
-    return `    "${match[1]}"\n    {\n      "manifest"   "${match[2]}"\n      "size"   "0"\n      "download"   "0"\n    }\n`;
-  }).join('')}  }\n}\n`;
-      fs.writeFileSync(acfPath, acf, 'utf-8');
-      results.acfCreated = true;
-      results.acfPath = acfPath;
-    } catch (err) {
-      results.errors.push(`Failed to create ACF: ${err.message}`);
+  // Always (over)write the ACF — if a previous broken-format ACF exists
+  // (e.g. from an older Vex version), it would block Steam from reading
+  // the corrected format. Overwriting is safe since the manifest files in
+  // depotcache are the source of truth.
+  try {
+    if (fs.existsSync(acfPath)) fs.unlinkSync(acfPath);
+    const safeName = (gameName || `App ${appId}`).replace(/[<>:"/\\|?*]/g, '');
+    // Parse depot/manifest IDs from filenames: {depotId}_{manifestId}.manifest
+    const depotEntries = [];
+    for (const mf of manifestFiles) {
+      const match = mf.match(/(\d+)_(\d+)\.manifest$/);
+      if (match) depotEntries.push({ depotId: match[1], manifestId: match[2] });
     }
-  } else {
-    results.acfCreated = false;
+    const acf = `"AppState"
+{
+\t"appid"\t\t"${appId}"
+\t"Universe"\t\t"1"
+\t"name"\t\t"${gameName || `App ${appId}`}"
+\t"StateFlags"\t\t"4"
+\t"installdir"\t\t"${safeName}"
+\t"ScheduledAutoUpdate"\t\t"0"
+\t"StagedBackground"\t\t"0"
+\t"FullyInstalled"\t\t"0"
+\t"BytesToDownload"\t\t"0"
+\t"BytesDownloaded"\t\t"0"
+\t"BytesStaged"\t\t"0"
+\t"TargetBuildID"\t\t"0"
+\t"AutoUpdateBehavior"\t\t"0"
+\t"AllowOtherDownloadsWhileRunning"\t\t"0"
+\t"UserConfig"
+\t{
+\t}
+\t"MountedDepots"
+\t{
+${depotEntries.map(d => `\t\t"${d.depotId}"\t\t"${d.manifestId}"`).join('\n')}
+\t}
+\t"InstalledDepots"
+\t{
+${depotEntries.map(d => `\t\t"${d.depotId}"\n\t\t{\n\t\t\t"manifest"\t\t"${d.manifestId}"\n\t\t\t"size"\t\t"0"\n\t\t\t"download"\t\t"0"\n\t\t}`).join('\n')}
+\t}
+}
+`;
+    fs.writeFileSync(acfPath, acf, 'utf-8');
+    results.acfCreated = true;
     results.acfPath = acfPath;
+  } catch (err) {
+    results.errors.push(`Failed to create ACF: ${err.message}`);
   }
 
   results.success = results.manifestsExtracted > 0;
@@ -414,8 +445,9 @@ async function importManifestZip(zipBuffer, appId, gameName, steamPath) {
   // Create appmanifest ACF if we have an appId and manifest files
   if (appId && manifestFiles.length > 0) {
     const acfPath = path.join(steamPath, 'steamapps', `appmanifest_${appId}.acf`);
-    if (!fs.existsSync(acfPath)) {
-      try {
+    // Always (over)write the ACF — see comment in applyManifestsForApp
+    try {
+      if (fs.existsSync(acfPath)) fs.unlinkSync(acfPath);
         // Parse depot/manifest IDs from filenames: {depotId}_{manifestId}.manifest
         const depotEntries = [];
         for (const mf of manifestFiles) {
@@ -426,29 +458,34 @@ async function importManifestZip(zipBuffer, appId, gameName, steamPath) {
         }
 
         if (depotEntries.length > 0) {
-          const acf = `"appinfo"
+          const safeName = (gameName || `App ${appId}`).replace(/[<>:"/\\|?*]/g, '');
+          const acf = `"AppState"
 {
-  "appid"
-  {
-    "appid"   "${appId}"
-  }
-  "name"   "${gameName || `App ${appId}`}"
-  "Universe"   "1"
-  "installdir"   "${(gameName || `App ${appId}`).replace(/[<>:"/\\|?*]/g, '')}"
-  "StateFlags"   "4"
-  "AutoUpdateBehavior"   "0"
-  "BytesToDownload"   "0"
-  "BytesDownloaded"   "0"
-  "SizeOnDisk"   "0"
-  "InstalledDepots"
-  {
-${depotEntries.map(d => `    "${d.depotId}"
-    {
-      "manifest"   "${d.manifestId}"
-      "size"   "0"
-      "download"   "0"
-    }`).join('\n')}
-  }
+\t"appid"\t\t"${appId}"
+\t"Universe"\t\t"1"
+\t"name"\t\t"${gameName || `App ${appId}`}"
+\t"StateFlags"\t\t"4"
+\t"installdir"\t\t"${safeName}"
+\t"ScheduledAutoUpdate"\t\t"0"
+\t"StagedBackground"\t\t"0"
+\t"FullyInstalled"\t\t"0"
+\t"BytesToDownload"\t\t"0"
+\t"BytesDownloaded"\t\t"0"
+\t"BytesStaged"\t\t"0"
+\t"TargetBuildID"\t\t"0"
+\t"AutoUpdateBehavior"\t\t"0"
+\t"AllowOtherDownloadsWhileRunning"\t\t"0"
+\t"UserConfig"
+\t{
+\t}
+\t"MountedDepots"
+\t{
+${depotEntries.map(d => `\t\t"${d.depotId}"\t\t"${d.manifestId}"`).join('\n')}
+\t}
+\t"InstalledDepots"
+\t{
+${depotEntries.map(d => `\t\t"${d.depotId}"\n\t\t{\n\t\t\t"manifest"\t\t"${d.manifestId}"\n\t\t\t"size"\t\t"0"\n\t\t\t"download"\t\t"0"\n\t\t}`).join('\n')}
+\t}
 }
 `;
           fs.writeFileSync(acfPath, acf, 'utf-8');
@@ -458,11 +495,7 @@ ${depotEntries.map(d => `    "${d.depotId}"
       } catch (err) {
         results.errors.push(`Failed to create ACF: ${err.message}`);
       }
-    } else {
-      results.acfCreated = false;
-      results.acfPath = acfPath;
     }
-  }
 
   results.success = results.manifestsExtracted > 0 || results.luaWritten;
   return results;
