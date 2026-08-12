@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('vex', {
   // Library
   library: {
     scan: () => ipcRenderer.invoke('library:scan'),
+    remove: (appId) => ipcRenderer.invoke('library:remove', appId),
   },
   // Nexus/IGDB
   nexus: {

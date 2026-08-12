@@ -2,14 +2,11 @@
 
 window.VexDownloads = {
   activeDownloads: [],
-  history: [
-    { title: 'Hogwarts Legacy', appId: '990080', size: '85 GB', completedAt: '2 hours ago', provider: 'gofile' },
-    { title: 'Sekiro', appId: '814380', size: '28 GB', completedAt: 'Yesterday', provider: 'buzzheavier' },
-    { title: 'Forza Horizon 5', appId: '1551360', size: '110 GB', completedAt: '3 days ago', provider: 'gofile' },
-  ],
+  history: [],
   progressUnsub: null,
 
   async load() {
+    this.activeDownloads = [];
     this.renderActive();
     this.renderHistory();
     this.setupProgressListener();
@@ -24,21 +21,20 @@ window.VexDownloads = {
 
   renderActive() {
     const list = document.getElementById('active-downloads-list');
+    if (!list) return;
     list.innerHTML = '';
 
-    // Demo active downloads
-    const demoActive = [
-      { title: 'Elden Ring', appId: '1245620', progress: 67, speed: '12.5 MB/s', eta: '4 min', provider: 'gofile', paused: false },
-      { title: 'Cyberpunk 2077', appId: '1091500', progress: 23, speed: '8.2 MB/s', eta: '18 min', provider: 'buzzheavier', paused: true },
-    ];
-
-    const allActive = [...demoActive, ...this.activeDownloads];
-    if (!allActive.length) {
-      list.innerHTML = '<p style="color: var(--color-text-muted); padding: 20px;">No active downloads. Browse the Store to find games.</p>';
+    if (!this.activeDownloads.length) {
+      list.innerHTML = `
+        <div style="text-align: center; padding: 40px 20px;">
+          <p style="color: var(--color-text-muted); font-size: 14px; margin-bottom: 12px;">No active downloads</p>
+          <p style="color: var(--color-text-muted); font-size: 12px;">Downloads started from the Store or Add Game will appear here.</p>
+        </div>
+      `;
       return;
     }
 
-    allActive.forEach(dl => {
+    this.activeDownloads.forEach(dl => {
       const card = document.createElement('div');
       card.className = 'download-card';
       card.dataset.appId = dl.appId;
@@ -51,9 +47,9 @@ window.VexDownloads = {
           <div class="download-bar"><div class="download-bar-fill" style="width: ${dl.progress}%"></div></div>
           <div class="download-meta">
             <span>${dl.progress}%</span>
-            <span>${dl.speed}</span>
-            <span>ETA: ${dl.eta}</span>
-            <span class="provider-badge" style="border: 1px solid var(--color-border); padding: 2px 8px; border-radius: 10px;">${dl.provider}</span>
+            <span>${dl.speed || '—'}</span>
+            <span>ETA: ${dl.eta || '—'}</span>
+            <span class="provider-badge" style="border: 1px solid var(--color-border); padding: 2px 8px; border-radius: 10px;">${dl.provider || 'steam'}</span>
           </div>
         </div>
         <div class="download-actions">
@@ -77,6 +73,7 @@ window.VexDownloads = {
 
       card.querySelector('[data-action="cancel"]').addEventListener('click', async () => {
         await window.vex?.downloads.cancel();
+        this.activeDownloads = this.activeDownloads.filter(d => d.appId !== dl.appId);
         showToast('Download cancelled');
         this.renderActive();
       });
@@ -87,7 +84,17 @@ window.VexDownloads = {
 
   renderHistory() {
     const list = document.getElementById('history-list');
+    if (!list) return;
     list.innerHTML = '';
+
+    if (!this.history.length) {
+      list.innerHTML = `
+        <div style="text-align: center; padding: 40px 20px;">
+          <p style="color: var(--color-text-muted); font-size: 14px;">No completed downloads yet</p>
+        </div>
+      `;
+      return;
+    }
 
     this.history.forEach(item => {
       const card = document.createElement('div');
@@ -98,10 +105,10 @@ window.VexDownloads = {
         <div class="download-info">
           <div class="download-title">${item.title}</div>
           <div class="download-meta">
-            <span>${item.size}</span>
+            <span>${item.size || '—'}</span>
             <span>${item.completedAt}</span>
             <span style="color: var(--color-success);">✓ Completed</span>
-            <span class="provider-badge" style="border: 1px solid var(--color-border); padding: 2px 8px; border-radius: 10px;">${item.provider}</span>
+            <span class="provider-badge" style="border: 1px solid var(--color-border); padding: 2px 8px; border-radius: 10px;">${item.provider || 'steam'}</span>
           </div>
         </div>
         <div class="download-actions">
@@ -124,8 +131,8 @@ window.VexDownloads = {
     if (meta) {
       meta.innerHTML = `
         <span>${progress.percent}%</span>
-        <span>${progress.speed}</span>
-        <span>ETA: ${progress.eta}</span>
+        <span>${progress.speed || '—'}</span>
+        <span>ETA: ${progress.eta || '—'}</span>
       `;
     }
     if (progress.done) {
@@ -135,8 +142,9 @@ window.VexDownloads = {
         appId: progress.appId,
         size: '—',
         completedAt: 'Just now',
-        provider: 'gofile',
+        provider: progress.provider || 'steam',
       });
+      this.activeDownloads = this.activeDownloads.filter(d => d.appId !== progress.appId);
       this.renderActive();
       this.renderHistory();
     }
@@ -147,6 +155,17 @@ window.VexDownloads = {
     if (!game.url) {
       const appId = game.appId || game.steam_app_id;
       showToast(`Downloading ${game.title} via Steam...`);
+      // Track it in active downloads
+      this.activeDownloads.push({
+        title: game.title,
+        appId: appId,
+        progress: 0,
+        speed: 'Connecting...',
+        eta: '—',
+        provider: 'steam',
+        paused: false,
+      });
+      this.renderActive();
       await window.vex?.steam.installGame(appId);
       return;
     }

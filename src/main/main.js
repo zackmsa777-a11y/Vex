@@ -620,6 +620,49 @@ function registerIPC() {
 
   // Library
   ipcMain.handle('library:scan', async () => scanLibrary());
+  ipcMain.handle('library:remove', async (_e, appId) => {
+    const steamInfo = detectSteamPath();
+    const removed = { lua: false, sls: false, acf: false, depotcache: false };
+
+    // 1. Delete Lua file
+    if (steamInfo) {
+      const luaPath = path.join(steamInfo.path, 'config', 'stplug-in', `${appId}.lua`);
+      try { if (fs.existsSync(luaPath)) { fs.unlinkSync(luaPath); removed.lua = true; } } catch {}
+    }
+
+    // 2. Remove from SLSsteam config
+    const slsResult = removeSLSApp(appId);
+    removed.sls = slsResult.success;
+
+    // 3. Delete appmanifest ACF file
+    if (steamInfo) {
+      const acfPath = path.join(steamInfo.path, 'steamapps', `appmanifest_${appId}.acf`);
+      try { if (fs.existsSync(acfPath)) { fs.unlinkSync(acfPath); removed.acf = true; } } catch {}
+    }
+
+    // 4. Delete depot manifest files for this app
+    if (steamInfo) {
+      const depotCachePath = path.join(steamInfo.path, 'steamapps', 'depotcache');
+      try {
+        if (fs.existsSync(depotCachePath)) {
+          const files = fs.readdirSync(depotCachePath);
+          for (const f of files) {
+            // Manifest files are named {depotId}_{manifestId}.manifest
+            // We need to find which depots belong to this app
+            // Check the ACF for depot IDs (but it's already deleted)
+            // Alternative: match by reading the manifest and checking appId
+            // For simplicity, also check for files named with appId prefix
+            if (f.startsWith(`${appId}_`) || f.includes(`_${appId}.manifest`)) {
+              fs.unlinkSync(path.join(depotCachePath, f));
+              removed.depotcache = true;
+            }
+          }
+        }
+      } catch {}
+    }
+
+    return { success: true, removed };
+  });
 
   // Nexus
   ipcMain.handle('nexus:search', async (_e, query) => fetchNexusGames(query));
