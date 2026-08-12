@@ -7,18 +7,18 @@ window.VexHome = {
     const empty = document.getElementById('home-empty');
     grid.innerHTML = '';
 
-    // Get games from SLSsteam config IDs + local library scan
     try {
-      const slsIds = await window.vex?.sls.getIds() || [];
+      // sls.getIds() returns [{ appId, name }] — apps SLSsteam has unlocked
+      // via the AdditionalApps entry in ~/.config/SLSsteam/config.yaml
+      const slsApps = await window.vex?.sls.getIds() || [];
       const libraryGames = await window.vex?.library.scan() || [];
 
-      // Build game list from SLSsteam IDs
-      this.games = slsIds.map(appId => ({
+      this.games = slsApps.map(({ appId, name }) => ({
         appId,
-        title: libraryGames.find(g => g.appId === appId)?.name || `App ${appId}`,
+        title: name || libraryGames.find(g => g.appId === appId)?.name || `App ${appId}`,
       }));
 
-      // Also add library games not in SLS
+      // Also add installed library games not already unlocked via SLSsteam
       for (const g of libraryGames) {
         if (!this.games.find(x => x.appId === g.appId)) {
           this.games.push({ appId: g.appId, title: g.name });
@@ -26,35 +26,20 @@ window.VexHome = {
       }
 
       if (!this.games.length) {
-        // Show demo games if nothing found
-        this.games = [
-          { appId: '1245620', title: 'Elden Ring' },
-          { appId: '1091500', title: 'Cyberpunk 2077' },
-          { appId: '990080', title: 'Hogwarts Legacy' },
-          { appId: '1174180', title: 'Red Dead Redemption 2' },
-          { appId: '582010', title: 'Monster Hunter World' },
-          { appId: '814380', title: 'Sekiro: Shadows Die Twice' },
-        ];
+        empty.classList.remove('hidden');
+        grid.style.display = 'none';
+        return;
       }
 
       empty.classList.add('hidden');
+      grid.style.display = '';
       this.games.forEach(game => {
         grid.appendChild(createGameCard(game, { showPlay: true }));
       });
     } catch (err) {
-      // Fallback to demo data
-      this.games = [
-        { appId: '1245620', title: 'Elden Ring' },
-        { appId: '1091500', title: 'Cyberpunk 2077' },
-        { appId: '990080', title: 'Hogwarts Legacy' },
-        { appId: '1174180', title: 'Red Dead Redemption 2' },
-        { appId: '582010', title: 'Monster Hunter World' },
-        { appId: '814380', title: 'Sekiro: Shadows Die Twice' },
-      ];
-      empty.classList.add('hidden');
-      this.games.forEach(game => {
-        grid.appendChild(createGameCard(game, { showPlay: true }));
-      });
+      empty.classList.remove('hidden');
+      grid.style.display = 'none';
+      showToast('Could not load games: ' + err.message, 'error');
     }
   }
 };
@@ -65,11 +50,11 @@ document.getElementById('appid-submit').addEventListener('click', async () => {
   const name = document.getElementById('game-name-input').value.trim() || `App ${appId}`;
   if (!appId) { showToast('Please enter an AppID', 'error'); return; }
 
-  showToast('Writing Lua to Steam config...');
+  showToast('Adding game to SLSsteam config...');
   try {
     const result = await window.vex.lua.write(appId, name, null);
     if (result.success) {
-      showToast('Game added!', 'success');
+      showToast('Game added! Restart Steam to see it in your Steam library too.', 'success');
       closeModal('add-game-modal');
       document.getElementById('appid-input').value = '';
       document.getElementById('game-name-input').value = '';
@@ -90,11 +75,11 @@ document.getElementById('lua-submit').addEventListener('click', async () => {
   if (!appId) { showToast('Please enter an AppID', 'error'); return; }
   if (!content) { showToast('Please paste a Lua script or drop a .lua file', 'error'); return; }
 
-  showToast('Writing Lua to Steam config...');
+  showToast('Adding game to SLSsteam config...');
   try {
     const result = await window.vex.lua.write(appId, name, content);
     if (result.success) {
-      showToast('Game added!', 'success');
+      showToast('Game added! Restart Steam to see it in your Steam library too.', 'success');
       closeModal('add-game-modal');
       document.getElementById('lua-appid').value = '';
       document.getElementById('lua-name').value = '';

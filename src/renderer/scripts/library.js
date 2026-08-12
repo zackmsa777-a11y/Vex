@@ -20,15 +20,36 @@ window.VexLibrary = {
       grid.style.display = '';
 
       this.games.forEach(game => {
+        const isInstalled = game.installed !== false;
+
         const card = createGameCard({
           appId: game.appId,
           title: game.name,
-        }, { showPlay: true });
+        }, { showPlay: isInstalled });
 
-        // Add install size and last played info
+        // Add install size / status info
         const info = card.querySelector('.game-info');
         if (info) {
-          info.innerHTML += `<div class="game-meta">Size: ${game.sizeFormatted || 'Unknown'}</div>`;
+          if (isInstalled) {
+            info.innerHTML += `<div class="game-meta">Size: ${game.sizeFormatted || 'Unknown'}</div>`;
+          } else {
+            info.innerHTML += `<div class="game-meta" style="color: var(--color-warning);">Unlocked — not installed</div>`;
+          }
+        }
+
+        // For unlocked-but-not-installed games, swap the missing Play button
+        // for an "Install via Steam" action that opens the store page
+        if (!isInstalled) {
+          const actions = card.querySelector('.game-actions');
+          const installBtn = document.createElement('button');
+          installBtn.className = 'btn btn-primary';
+          installBtn.textContent = '↓ Install via Steam';
+          installBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.vex?.system.openExternal(`steam://store/${game.appId}`);
+            showToast('Opening Steam store page — install from there, it\'ll show as owned', 'info');
+          });
+          actions.insertBefore(installBtn, actions.firstChild);
         }
 
         grid.appendChild(card);

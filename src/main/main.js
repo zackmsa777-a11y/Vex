@@ -88,25 +88,58 @@ function killSteam() {
   try { execSync('pkill -x steam 2>/dev/null; pkill -f "steam.sh" 2>/dev/null', { stdio: 'ignore' }); } catch {}
 }
 
+// ─── SLSsteam install location ───
+// IMPORTANT: SLSsteam does NOT live inside the Steam directory and does NOT use
+// LD_PRELOAD. Per the official installer (AceSLS/SLSsteam setup.sh) it installs to
+// ~/.local/share/SLSsteam/ (or the Flatpak-scoped equivalent) and is loaded via
+// LD_AUDIT, in the order "library-inject.so:SLSsteam.so". This is what lets the
+// loader attach to the real (64-bit) Steam client process without erroring out on
+// the 32-bit bootstrap script — each process independently validates the audit
+// libraries against its own ELF class instead of aborting the whole preload chain.
+function getSLSDir() {
+  const steamInfo = detectSteamPath();
+  const home = os.homedir();
+  if (steamInfo && steamInfo.type === 'flatpak') {
+    return path.join(home, '.var', 'app', 'com.valvesoftware.Steam', '.local', 'share', 'SLSsteam');
+  }
+  return path.join(home, '.local', 'share', 'SLSsteam');
+}
+
+function isFlatpakSteam() {
+  const steamInfo = detectSteamPath();
+  return !!(steamInfo && steamInfo.type === 'flatpak');
+}
+
 function startSteam(withInjection = false) {
   const steamInfo = detectSteamPath();
   if (!steamInfo) return { success: false, error: 'Steam path not found' };
 
-  const steamPath = steamInfo.path;
-  const slsPath = path.join(steamPath, 'SLSteam.so');
-  const injectPath = path.join(steamPath, 'library-inject.so');
+  const slsDir = getSLSDir();
+  const slsPath = path.join(slsDir, 'SLSsteam.so');
+  const injectPath = path.join(slsDir, 'library-inject.so');
+  const hasInjection = fs.existsSync(slsPath) && fs.existsSync(injectPath);
 
-  if (withInjection && fs.existsSync(slsPath) && fs.existsSync(injectPath)) {
-    const env = {
-      ...process.env,
-      LD_PRELOAD: `${slsPath}:${injectPath}`,
-    };
-    spawn('steam', [], { env, detached: true, stdio: 'ignore' }).unref();
-    return { success: true, injected: true, message: 'Steam started with SLSsteam injection' };
+  if (withInjection && hasInjection) {
+    // Order matters: library-inject.so must come first, then SLSsteam.so
+    const auditValue = `${injectPath}:${slsPath}`;
+
+    if (isFlatpakSteam()) {
+      spawn('flatpak', ['run', `--env=LD_AUDIT=${auditValue}`, 'com.valvesoftware.Steam'], {
+        detached: true, stdio: 'ignore',
+      }).unref();
+    } else {
+      const env = { ...process.env, LD_AUDIT: auditValue };
+      spawn('steam', [], { env, detached: true, stdio: 'ignore' }).unref();
+    }
+    return { success: true, injected: true, message: 'Steam started with SLSsteam injection (LD_AUDIT)' };
   } else {
-    spawn('steam', [], { detached: true, stdio: 'ignore' }).unref();
+    if (isFlatpakSteam()) {
+      spawn('flatpak', ['run', 'com.valvesoftware.Steam'], { detached: true, stdio: 'ignore' }).unref();
+    } else {
+      spawn('steam', [], { detached: true, stdio: 'ignore' }).unref();
+    }
     if (withInjection) {
-      return { success: true, injected: false, message: 'Steam started (SLSsteam libraries not found — started without injection)' };
+      return { success: true, injected: false, message: 'Steam started (SLSsteam libraries not found — run "Set up Linux tools" first)' };
     }
     return { success: true, injected: false, message: 'Steam started' };
   }
@@ -114,7 +147,7 @@ function startSteam(withInjection = false) {
 
 function launchGame(appId) {
   if (!isSteamRunning()) {
-    const result = startSteam(false);
+    const result = startSteam(true);
     if (!result.success) return { success: false, error: 'Could not start Steam' };
   }
   // Fire steam://run/<appid>
@@ -122,12 +155,11 @@ function launchGame(appId) {
   return { success: true, message: `Launching ${appId}` };
 }
 
-// ─── SLSsteam Setup (from SFF Linux Setup) ───
+// ─── SLSsteam Setup (installs to ~/.local/share/SLSsteam via the official 7z release) ───
 function checkLinuxTools() {
-  const steamInfo = detectSteamPath();
-  const steamPath = steamInfo ? steamInfo.path : path.join(os.homedir(), '.local', 'share', 'Steam');
-  const slsPath = path.join(steamPath, 'SLSteam.so');
-  const injectPath = path.join(steamPath, 'library-inject.so');
+  const slsDir = getSLSDir();
+  const slsPath = path.join(slsDir, 'SLSsteam.so');
+  const injectPath = path.join(slsDir, 'library-inject.so');
 
   let dotnet = false;
   try {
@@ -148,22 +180,29 @@ async function setupSLSsteam() {
   const steamInfo = detectSteamPath();
   if (!steamInfo) return { success: false, error: 'Steam path not found' };
 
-  const steamPath = steamInfo.path;
-  const slsDest = path.join(steamPath, 'SLSteam.so');
-  const injectDest = path.join(steamPath, 'library-inject.so');
-
-  // Download SLSsteam from GitHub releases
-  const SLS_URL = 'https://github.com/dotDMZ/SLSteam/releases/latest/download/SLSteam.so';
-  const INJECT_URL = 'https://github.com/dotDMZ/SLSteam/releases/latest/download/library-inject.so';
-
   const https = require('https');
+  const slsDir = getSLSDir();
+  if (!fs.existsSync(slsDir)) fs.mkdirSync(slsDir, { recursive: true });
 
-  function downloadFile(url, dest) {
+  // The official releases only ship a packed archive (SLSsteam-Any.7z) containing
+  // bin/SLSsteam.so, bin/library-inject.so, and res/config.yaml — there is no raw
+  // per-file download. Fetch the archive, extract with the bundled 7za binary.
+  const RELEASE_URL = 'https://github.com/AceSLS/SLSsteam/releases/latest/download/SLSsteam-Any.7z';
+  const archivePath = path.join(app.getPath('temp'), 'SLSsteam-Any.7z');
+
+  function downloadFile(url, dest, redirects = 0) {
     return new Promise((resolve, reject) => {
+      if (redirects > 5) { reject(new Error('Too many redirects')); return; }
       const file = fs.createWriteStream(dest);
       https.get(url, (response) => {
         if (response.statusCode === 302 || response.statusCode === 301) {
-          downloadFile(response.headers.location, dest).then(resolve).catch(reject);
+          file.close();
+          downloadFile(response.headers.location, dest, redirects + 1).then(resolve).catch(reject);
+          return;
+        }
+        if (response.statusCode !== 200) {
+          file.close();
+          reject(new Error(`Download failed: HTTP ${response.statusCode}`));
           return;
         }
         response.pipe(file);
@@ -174,21 +213,59 @@ async function setupSLSsteam() {
   }
 
   try {
-    await downloadFile(SLS_URL, slsDest);
-    await downloadFile(INJECT_URL, injectDest);
-    return { success: true, message: 'SLSsteam installed successfully' };
+    await downloadFile(RELEASE_URL, archivePath);
+
+    // Extract using the 7za binary bundled via the 7zip-bin package
+    const sevenBin = require('7zip-bin');
+    const sevenPath = sevenBin.path7za;
+    const extractDir = path.join(app.getPath('temp'), 'sls-extract');
+    if (fs.existsSync(extractDir)) fs.rmSync(extractDir, { recursive: true, force: true });
+    fs.mkdirSync(extractDir, { recursive: true });
+
+    execSync(`"${sevenPath}" x "${archivePath}" -o"${extractDir}" -y`, { stdio: 'ignore' });
+
+    const soSrc = path.join(extractDir, 'bin', 'SLSsteam.so');
+    const injectSrc = path.join(extractDir, 'bin', 'library-inject.so');
+    const configTemplateSrc = path.join(extractDir, 'res', 'config.yaml');
+
+    if (!fs.existsSync(soSrc) || !fs.existsSync(injectSrc)) {
+      return { success: false, error: 'Archive did not contain expected bin/SLSsteam.so and bin/library-inject.so' };
+    }
+
+    fs.copyFileSync(soSrc, path.join(slsDir, 'SLSsteam.so'));
+    fs.copyFileSync(injectSrc, path.join(slsDir, 'library-inject.so'));
+
+    // Seed the official default config.yaml if the user doesn't have one yet
+    ensureSLSConfig(configTemplateSrc);
+
+    // Cleanup temp files
+    try { fs.unlinkSync(archivePath); } catch {}
+    try { fs.rmSync(extractDir, { recursive: true, force: true }); } catch {}
+
+    // For Flatpak Steam, also set the LD_AUDIT override so it applies automatically
+    if (isFlatpakSteam()) {
+      try {
+        const auditValue = `${path.join(slsDir, 'library-inject.so')}:${path.join(slsDir, 'SLSsteam.so')}`;
+        execSync(`flatpak override --user --env=LD_AUDIT="${auditValue}" com.valvesoftware.Steam`, { stdio: 'ignore' });
+      } catch {}
+    }
+
+    return { success: true, message: `SLSsteam installed to ${slsDir}` };
   } catch (err) {
     return { success: false, error: err.message };
   }
 }
 
-// ─── Lua Script Writing (from SFF saved_lua pattern) ───
+// ─── Lua Script Writing (optional, for custom stplug-in style scripts) ───
+// NOTE: this is a supplementary/manual mechanism. The thing that actually makes
+// SLSsteam treat an AppID as owned is the AdditionalApps entry in config.yaml
+// (see addSLSApp below) — writeLuaConfig always keeps that in sync too, so every
+// "Add Game" / "Apply Fix" flow in the UI works whether or not it passes Lua content.
 function writeLuaConfig(appId, gameName, luaContent) {
   const steamInfo = detectSteamPath();
   if (!steamInfo) return { success: false, error: 'Steam path not found' };
 
   const steamPath = steamInfo.path;
-  // SFF uses config/stplug-in/ for Lua scripts
   const luaDir = path.join(steamPath, 'config', 'stplug-in');
   if (!fs.existsSync(luaDir)) {
     fs.mkdirSync(luaDir, { recursive: true });
@@ -198,16 +275,22 @@ function writeLuaConfig(appId, gameName, luaContent) {
 
   let content = luaContent;
   if (!content) {
-    // Auto-generate template
     content = `-- Vex auto-generated config for AppID ${appId}\n-- Game: ${gameName}\nreturn {\n  appid = ${appId},\n  name = "${gameName}",\n  launch = true\n}\n`;
   }
 
   try {
     fs.writeFileSync(luaPath, content, 'utf-8');
-    return { success: true, path: luaPath, message: `Lua written to ${luaPath}` };
   } catch (err) {
     return { success: false, error: err.message };
   }
+
+  // This is the part that actually registers the game with SLSsteam
+  const slsResult = addSLSApp(appId, gameName);
+
+  if (!slsResult.success) {
+    return { success: false, error: slsResult.error || 'Failed to update SLSsteam config' };
+  }
+  return { success: true, path: luaPath, message: `Lua written to ${luaPath}, AppID ${appId} added to SLSsteam config` };
 }
 
 function readLuaConfig(appId) {
@@ -220,76 +303,223 @@ function readLuaConfig(appId) {
 
 function deleteLuaConfig(appId) {
   const steamInfo = detectSteamPath();
-  if (!steamInfo) return false;
-  const luaPath = path.join(steamInfo.path, 'config', 'stplug-in', `${appId}.lua`);
-  try { if (fs.existsSync(luaPath)) { fs.unlinkSync(luaPath); return true; } } catch {}
-  return false;
+  let luaDeleted = false;
+  if (steamInfo) {
+    const luaPath = path.join(steamInfo.path, 'config', 'stplug-in', `${appId}.lua`);
+    try { if (fs.existsSync(luaPath)) { fs.unlinkSync(luaPath); luaDeleted = true; } } catch {}
+  }
+  removeSLSApp(appId);
+  return luaDeleted;
 }
 
 // ─── SLSsteam Config (YAML) ───
-// SFF uses a config.yaml with AdditionalApps list
+// Official, single correct location per AceSLS/SLSsteam docs: ~/.config/SLSsteam/config.yaml
 function getSLSConfigPath() {
-  const steamInfo = detectSteamPath();
-  if (!steamInfo) return null;
-  // SLSsteam config is at ~/.local/share/Steam/config.yaml or similar
   const home = os.homedir();
-  const candidates = [
-    path.join(home, '.config', 'SLSsteam', 'config.yaml'),
-    path.join(home, '.local', 'share', 'SLSsteam', 'config.yaml'),
-    path.join(steamInfo.path, 'config.yaml'),
-  ];
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
+  return path.join(home, '.config', 'SLSsteam', 'config.yaml');
+}
+
+const DEFAULT_SLS_CONFIG = `#Example AppIds Config for those not familiar with YAML:
+#AppIds:
+#  - 440
+#  - 730
+#Take care of not messing up your spaces! Otherwise it won't work
+#Disables Family Share license locking for self and others
+DisableFamilyShareLock: yes
+#Switches to whitelist instead of the default blacklist
+UseWhitelist: no
+#List of AppIds to ex-/include.
+AppIds:
+#Additional AppIds to inject (games Vex has unlocked that you don't own)
+AdditionalApps:
+#Extra Data for Dlcs belonging to a specific AppId
+DlcData:
+#Override game titles for entries in AdditionalApps
+GameTitles:
+#Disable cloud saves for unlocked games
+DisableCloud: yes
+#Disable updates for AppIds on AdditionalApps
+DisableUpdates: yes
+#Notifications
+Notifications: yes
+LogLevel: 2
+`;
+
+function ensureSLSConfig(templatePath) {
+  const configPath = getSLSConfigPath();
+  const configDir = path.dirname(configPath);
+  if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
+  if (!fs.existsSync(configPath)) {
+    let template = DEFAULT_SLS_CONFIG;
+    if (templatePath && fs.existsSync(templatePath)) {
+      try { template = fs.readFileSync(templatePath, 'utf-8'); } catch {}
+    }
+    fs.writeFileSync(configPath, template, 'utf-8');
   }
-  return null;
+  return configPath;
 }
 
 function getSLSAppIds() {
   const configPath = getSLSConfigPath();
-  if (!configPath) return [];
+  if (!fs.existsSync(configPath)) return [];
   try {
     const content = fs.readFileSync(configPath, 'utf-8');
-    // Parse YAML AdditionalApps
-    const match = content.match(/AdditionalApps:\s*\n((?:\s+-\s+.*\n)*)/);
-    if (!match) return [];
-    const ids = [];
-    const lines = match[1].split('\n');
-    for (const line of lines) {
-      const idMatch = line.match(/-\s+(\d+)/);
-      if (idMatch) ids.push(idMatch[1]);
-    }
-    return ids;
+    const ids = parseYamlListBlock(content, 'AdditionalApps');
+    const titles = parseYamlMapBlock(content, 'GameTitles');
+    return ids.map(id => ({ appId: id, name: titles[id] || null }));
   } catch { return []; }
 }
 
+// ─── Minimal YAML block helpers (regex-based, comment-preserving) ───
+// We deliberately avoid a full YAML parser/reformatter so we don't clobber the
+// user's comments or unrelated settings in config.yaml — we only touch the
+// AdditionalApps list and GameTitles map blocks.
+function parseYamlListBlock(content, key) {
+  const re = new RegExp(`^${key}:\\s*\\n((?:[ \\t]+.*\\n?)*)`, 'm');
+  const match = content.match(re);
+  if (!match) return [];
+  const ids = [];
+  for (const line of match[1].split('\n')) {
+    const idMatch = line.match(/-\s+"?(\d+)"?/);
+    if (idMatch) ids.push(idMatch[1]);
+  }
+  return ids;
+}
+
+function parseYamlMapBlock(content, key) {
+  const re = new RegExp(`^${key}:\\s*\\n((?:[ \\t]+.*\\n?)*)`, 'm');
+  const match = content.match(re);
+  const map = {};
+  if (!match) return map;
+  for (const line of match[1].split('\n')) {
+    const entryMatch = line.match(/"?(\d+)"?\s*:\s*"?([^"\n]*)"?/);
+    if (entryMatch) map[entryMatch[1]] = entryMatch[2].trim();
+  }
+  return map;
+}
+
+function addSLSApp(appId, gameName) {
+  try {
+    const configPath = ensureSLSConfig();
+    let content = fs.readFileSync(configPath, 'utf-8');
+
+    // Add to AdditionalApps list if not already present
+    const existingIds = parseYamlListBlock(content, 'AdditionalApps');
+    if (!existingIds.includes(String(appId))) {
+      content = insertIntoYamlList(content, 'AdditionalApps', `  - ${appId}`);
+    }
+
+    // Add/update GameTitles entry if a name was provided
+    if (gameName) {
+      content = upsertYamlMapEntry(content, 'GameTitles', appId, gameName);
+    }
+
+    fs.writeFileSync(configPath, content, 'utf-8');
+    return { success: true, path: configPath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+function removeSLSApp(appId) {
+  try {
+    const configPath = getSLSConfigPath();
+    if (!fs.existsSync(configPath)) return { success: true };
+    let content = fs.readFileSync(configPath, 'utf-8');
+    content = removeFromYamlList(content, 'AdditionalApps', appId);
+    content = removeYamlMapEntry(content, 'GameTitles', appId);
+    fs.writeFileSync(configPath, content, 'utf-8');
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+function insertIntoYamlList(content, key, newLine) {
+  const re = new RegExp(`^(${key}:\\s*\\n)`, 'm');
+  if (!re.test(content)) {
+    // Key doesn't exist at all — append a fresh block at the end
+    return content.replace(/\n?$/, `\n${key}:\n${newLine}\n`);
+  }
+  return content.replace(re, `$1${newLine}\n`);
+}
+
+function removeFromYamlList(content, key, appId) {
+  const re = new RegExp(`^(\\s*-\\s+"?${appId}"?\\s*)\\n`, 'm');
+  return content.replace(re, '');
+}
+
+function upsertYamlMapEntry(content, key, appId, value) {
+  const escapedValue = String(value).replace(/"/g, '\\"');
+  const entryRe = new RegExp(`^(\\s+)"?${appId}"?\\s*:.*$`, 'm');
+  if (entryRe.test(content)) {
+    return content.replace(entryRe, `$1${appId}: "${escapedValue}"`);
+  }
+  const keyRe = new RegExp(`^(${key}:\\s*\\n)`, 'm');
+  if (!keyRe.test(content)) {
+    return content.replace(/\n?$/, `\n${key}:\n  ${appId}: "${escapedValue}"\n`);
+  }
+  return content.replace(keyRe, `$1  ${appId}: "${escapedValue}"\n`);
+}
+
+function removeYamlMapEntry(content, key, appId) {
+  const re = new RegExp(`^\\s+"?${appId}"?\\s*:.*\\n`, 'm');
+  return content.replace(re, '');
+}
+
 // ─── Library Scanning ───
+// Merges two sources so the Library tab matches what the real Steam client
+// shows: games actually downloaded (appmanifest_*.acf on disk) AND games
+// SLSsteam has unlocked as "owned" via AdditionalApps but that haven't been
+// installed/downloaded yet. Those show with installed: false and an
+// "Unlocked — not installed" state instead of a Play button.
 function scanLibrary() {
   const steamInfo = detectSteamPath();
-  if (!steamInfo) return [];
-  const steamPath = steamInfo.path;
-  const appsDir = path.join(steamPath, 'steamapps');
-  if (!fs.existsSync(appsDir)) return [];
-
   const games = [];
-  // Read appmanifest_*.acf files
-  try {
-    const files = fs.readdirSync(appsDir);
-    for (const file of files) {
-      if (file.startsWith('appmanifest_') && file.endsWith('.acf')) {
-        const appId = file.replace('appmanifest_', '').replace('.acf', '');
-        const content = fs.readFileSync(path.join(appsDir, file), 'utf-8');
-        const nameMatch = content.match(/"name"\s+"([^"]+)"/);
-        const sizeMatch = content.match(/"SizeOnDisk"\s+"(\d+)"/);
-        games.push({
-          appId,
-          name: nameMatch ? nameMatch[1] : `App ${appId}`,
-          sizeBytes: sizeMatch ? parseInt(sizeMatch[1]) : 0,
-          sizeFormatted: sizeMatch ? formatBytes(parseInt(sizeMatch[1])) : 'Unknown',
-          path: path.join(appsDir, 'common', nameMatch ? nameMatch[1].replace(/[<>:"/\\|?*]/g, '') : appId),
-        });
-      }
+  const seenIds = new Set();
+
+  if (steamInfo) {
+    const appsDir = path.join(steamInfo.path, 'steamapps');
+    if (fs.existsSync(appsDir)) {
+      try {
+        const files = fs.readdirSync(appsDir);
+        for (const file of files) {
+          if (file.startsWith('appmanifest_') && file.endsWith('.acf')) {
+            const appId = file.replace('appmanifest_', '').replace('.acf', '');
+            const content = fs.readFileSync(path.join(appsDir, file), 'utf-8');
+            const nameMatch = content.match(/"name"\s+"([^"]+)"/);
+            const sizeMatch = content.match(/"SizeOnDisk"\s+"(\d+)"/);
+            games.push({
+              appId,
+              name: nameMatch ? nameMatch[1] : `App ${appId}`,
+              sizeBytes: sizeMatch ? parseInt(sizeMatch[1]) : 0,
+              sizeFormatted: sizeMatch ? formatBytes(parseInt(sizeMatch[1])) : 'Unknown',
+              path: path.join(appsDir, 'common', nameMatch ? nameMatch[1].replace(/[<>:"/\\|?*]/g, '') : appId),
+              installed: true,
+            });
+            seenIds.add(appId);
+          }
+        }
+      } catch {}
     }
-  } catch {}
+  }
+
+  // Merge in SLSsteam-unlocked apps that aren't installed yet
+  const slsApps = getSLSAppIds();
+  for (const { appId, name } of slsApps) {
+    if (!seenIds.has(appId)) {
+      games.push({
+        appId,
+        name: name || `App ${appId}`,
+        sizeBytes: 0,
+        sizeFormatted: 'Not installed',
+        path: null,
+        installed: false,
+      });
+      seenIds.add(appId);
+    }
+  }
+
   return games;
 }
 

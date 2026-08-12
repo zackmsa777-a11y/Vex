@@ -17,14 +17,19 @@
     "electron-builder": "^25.1.8"
   },
   "dependencies": {
+    "7zip-bin": "^5.2.0",
     "extract-zip": "^2.0.1"
   },
   "build": {
     "appId": "com.vex.launcher",
     "productName": "Vex",
-    "directories": { "output": "dist" },
+    "directories": {
+      "output": "dist"
+    },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "category": "Game",
       "icon": "src/renderer/assets/icon.png",
       "desktop": {
