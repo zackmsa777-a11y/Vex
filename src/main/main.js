@@ -274,6 +274,50 @@ async function setupSLSsteam() {
 // SLSsteam treat an AppID as owned is the AdditionalApps entry in config.yaml
 // (see addSLSApp below) — writeLuaConfig always keeps that in sync too, so every
 // "Add Game" / "Apply Fix" flow in the UI works whether or not it passes Lua content.
+function escapeSteamVdf(value) {
+  return String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r?\n/g, ' ');
+}
+
+function getSteamInstallDir(gameName, appId) {
+  // Steam uses the installdir value as a directory name under steamapps/common.
+  // Keep it filesystem-safe while retaining the user's game title when possible.
+  const safeName = String(gameName || `App ${appId}`)
+    .replace(/[<>:"/\\|?*]/g, '')
+    .replace(/[\x00-\x1f]/g, '')
+    .trim();
+  return safeName || String(appId);
+}
+
+function createSteamAppManifest(appId, gameName) {
+  const steamInfo = detectSteamPath();
+  if (!steamInfo) return { success: false, error: 'Steam path not found' };
+
+  const steamAppsDir = path.join(steamInfo.path, 'steamapps');
+  const manifestPath = path.join(steamAppsDir, `appmanifest_${appId}.acf`);
+  try {
+    fs.mkdirSync(steamAppsDir, { recursive: true });
+    // Never replace Steam's real manifest for an already-installed game.
+    if (fs.existsSync(manifestPath)) {
+      return { success: true, path: manifestPath, created: false };
+    }
+
+    const title = escapeSteamVdf(gameName || `App ${appId}`);
+    const installDir = escapeSteamVdf(getSteamInstallDir(gameName, appId));
+    const manifest = `"AppState"\n{\n\t"appid"\t\t"${appId}"\n\t"Universe"\t\t"1"\n\t"name"\t\t"${title}"\n\t"StateFlags"\t\t"4"\n\t"installdir"\t\t"${installDir}"\n\t"LastUpdated"\t\t"0"\n\t"UpdateResult"\t\t"0"\n\t"SizeOnDisk"\t\t"0"\n\t"buildid"\t\t"0"\n\t"LastOwner"\t\t"0"\n\t"BytesToDownload"\t\t"0"\n\t"BytesDownloaded"\t\t"0"\n\t"AutoUpdateBehavior"\t\t"0"\n\t"AllowOtherDownloadsWhileRunning"\t\t"0"\n\t"ScheduledAutoUpdate"\t\t"0"\n}\n`;
+
+    // Atomic write prevents Steam from reading a half-written manifest.
+    const tempPath = `${manifestPath}.tmp-${process.pid}`;
+    fs.writeFileSync(tempPath, manifest, { encoding: 'utf-8', mode: 0o600 });
+    fs.renameSync(tempPath, manifestPath);
+    return { success: true, path: manifestPath, created: true };
+  } catch (err) {
+    return { success: false, error: `Could not create Steam appmanifest: ${err.message}` };
+  }
+}
+
 function writeLuaConfig(appId, gameName, luaContent) {
   const steamInfo = detectSteamPath();
   if (!steamInfo) return { success: false, error: 'Steam path not found' };
@@ -303,7 +347,19 @@ function writeLuaConfig(appId, gameName, luaContent) {
   if (!slsResult.success) {
     return { success: false, error: slsResult.error || 'Failed to update SLSsteam config' };
   }
-  return { success: true, path: luaPath, message: `Lua written to ${luaPath}, AppID ${appId} added to SLSsteam config` };
+
+  const manifestResult = createSteamAppManifest(appId, gameName);
+  if (!manifestResult.success) {
+    return { success: false, error: manifestResult.error || 'Failed to create Steam appmanifest' };
+  }
+
+  return {
+    success: true,
+    path: luaPath,
+    manifestPath: manifestResult.path,
+    manifestCreated: manifestResult.created,
+    message: `Lua written to ${luaPath}; Steam manifest ${manifestResult.created ? 'created' : 'already exists'} at ${manifestResult.path}`,
+  };
 }
 
 function readLuaConfig(appId) {
@@ -320,6 +376,17 @@ function deleteLuaConfig(appId) {
   if (steamInfo) {
     const luaPath = path.join(steamInfo.path, 'config', 'stplug-in', `${appId}.lua`);
     try { if (fs.existsSync(luaPath)) { fs.unlinkSync(luaPath); luaDeleted = true; } } catch {}
+    const manifestPath = path.join(steamInfo.path, 'steamapps', `appmanifest_${appId}.acf`);
+    // Only remove the manifest when it is the zero-byte Vex placeholder.
+    // Real installed-game manifests must remain untouched.
+    try {
+      if (fs.existsSync(manifestPath)) {
+        const manifest = fs.readFileSync(manifestPath, 'utf-8');
+        if (/"SizeOnDisk"\s+"0"/.test(manifest) && /"buildid"\s+"0"/.test(manifest)) {
+          fs.unlinkSync(manifestPath);
+        }
+      }
+    } catch {}
   }
   removeSLSApp(appId);
   return luaDeleted;
