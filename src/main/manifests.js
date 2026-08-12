@@ -117,6 +117,10 @@ async function depotboxValidateManifest(depotId, manifestId) {
 }
 
 // ─── Extract ZIP to directory ───
+// Steam requires .manifest files to sit directly in steamapps/depotcache/ —
+// NOT in a subfolder. Many manifest ZIPs (Ryuu, DepotBox, etc.) nest files
+// inside a folder named after the game/appid, so after extracting we flatten
+// any .manifest files found in subdirectories up to destDir's root.
 async function extractZip(zipBuffer, destDir) {
   // Use the bundled 7za to extract
   const sevenBin = require('7zip-bin');
@@ -134,26 +138,81 @@ async function extractZip(zipBuffer, destDir) {
 
   if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
 
+  // Extract into a fresh temp subfolder first, so we can safely flatten
+  // without touching any files already sitting in destDir from other games.
+  const extractTemp = path.join(app.getPath('temp'), `vex-extract-${Date.now()}`);
+  fs.mkdirSync(extractTemp, { recursive: true });
+
   const { execSync } = require('child_process');
-  execSync(`"${sevenPath}" x "${tempZip}" -o"${destDir}" -y`, { stdio: 'ignore' });
+  try {
+    execSync(`"${sevenPath}" x "${tempZip}" -o"${extractTemp}" -y`, { stdio: 'pipe' });
+  } catch (err) {
+    try { fs.unlinkSync(tempZip); } catch {}
+    try { fs.rmSync(extractTemp, { recursive: true, force: true }); } catch {}
+    return { success: false, error: `7za extraction failed: ${err.message}` };
+  }
 
   try { fs.unlinkSync(tempZip); } catch {}
 
-  // List extracted files
-  const files = [];
+  // List everything that came out of the ZIP, no matter how deeply nested
+  const extractedFiles = [];
   function walkDir(dir) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         walkDir(fullPath);
       } else {
-        files.push(fullPath);
+        extractedFiles.push(fullPath);
       }
     }
   }
-  walkDir(destDir);
+  walkDir(extractTemp);
+
+  // Flatten: move every file up into destDir's root, regardless of nesting.
+  // This guarantees .manifest files end up exactly where Steam looks for them.
+  const files = [];
+  for (const src of extractedFiles) {
+    let target = path.join(destDir, path.basename(src));
+    // Avoid clobbering an existing file with the same name
+    if (fs.existsSync(target)) {
+      const ext = path.extname(target);
+      const base = path.basename(target, ext);
+      target = path.join(destDir, `${base}_${Date.now()}${ext}`);
+    }
+    try {
+      fs.renameSync(src, target);
+      files.push(target);
+    } catch (err) {
+      // Cross-device rename can fail — fall back to copy
+      try {
+        fs.copyFileSync(src, target);
+        files.push(target);
+      } catch {}
+    }
+  }
+
+  try { fs.rmSync(extractTemp, { recursive: true, force: true }); } catch {}
+
+  if (files.length === 0) {
+    return { success: false, error: 'ZIP extracted but contained no files (empty or unsupported archive format)' };
+  }
 
   return { success: true, files };
+}
+
+// ─── Guess an AppID and game name from a ZIP's filename ───
+// Manifest ZIPs are usually named like "1245620.zip", "Elden Ring 1245620.zip",
+// or "1245620_manifests.zip" — pull out the longest digit run as the AppID.
+function guessAppIdFromFilename(filePath) {
+  const base = path.basename(filePath, path.extname(filePath));
+  const digitRuns = base.match(/\d{2,8}/g) || [];
+  // Prefer the longest run — AppIDs are usually 3-7 digits, dates/versions are noise
+  const appId = digitRuns.sort((a, b) => b.length - a.length)[0] || null;
+  let name = base;
+  if (appId) {
+    name = base.replace(appId, '').replace(/[_\-.]+/g, ' ').trim();
+  }
+  return { appId, name: name || null };
 }
 
 // ─── Get Steam depotcache path ───
@@ -412,6 +471,7 @@ ${depotEntries.map(d => `    "${d.depotId}"
 module.exports = {
   applyManifestsForApp,
   importManifestZip,
+  guessAppIdFromFilename,
   checkProviderStatus,
   ryuuDownloadManifests,
   depotboxValidateManifest,

@@ -74,12 +74,12 @@ window.VexSettings = {
       if (keyInput) keyInput.value = authKey || '';
       statusEl.innerHTML = `
         <div class="tool-item">
-          <span class="${authKey ? 'check' : 'cross'}">${authKey ? '✓' : '✗'}</span>
-          <span>Ryuu Auth Key: ${authKey ? 'configured' : 'not set (register at generator.ryuu.lol)'}</span>
+          <span class="${authKey ? 'check' : 'cross'}">${authKey ? '✓' : '•'}</span>
+          <span>Ryuu Auth Key: ${authKey ? 'configured' : 'not set (optional — Ryuu now requires Discord login)'}</span>
         </div>
         <div class="tool-item">
-          <span class="check">i</span>
-          <span>Provider: Ryuu's Manifest API (50 free downloads/day)</span>
+          <span class="check">✓</span>
+          <span>Import Manifest ZIP works without any key — recommended method</span>
         </div>
       `;
     } catch {
@@ -212,17 +212,45 @@ document.getElementById('ryuu-link')?.addEventListener('click', (e) => {
 });
 
 document.getElementById('manifest-import-zip-btn')?.addEventListener('click', async () => {
-  showToast('Select a manifest ZIP file...');
-  const result = await window.vex?.manifests.importZipDialog(null, null);
-  if (result?.cancelled) return;
-  if (result?.success) {
-    const parts = [];
-    if (result.manifestsExtracted) parts.push(`${result.manifestsExtracted} manifests`);
-    if (result.luaWritten) parts.push('Lua script written');
-    if (result.acfCreated) parts.push('ACF manifest created');
-    showToast(`Imported: ${parts.join(', ') || 'files extracted'}`, 'success');
-  } else {
-    showToast(`Import failed: ${result?.error || 'Unknown error'}`, 'error');
+  try {
+    if (!window.vex?.manifests?.pickZip) {
+      showToast('This build is missing the ZIP import feature — please update Vex', 'error');
+      return;
+    }
+
+    // Step 1: pick the file, get an AppID guess from its filename
+    const picked = await window.vex.manifests.pickZip();
+    if (picked?.cancelled) return;
+    if (!picked?.success) {
+      showToast(`Could not open file picker: ${picked?.error || 'Unknown error'}`, 'error');
+      return;
+    }
+
+    // Step 2: confirm/edit the AppID before we touch any files
+    const appId = window.prompt(
+      `Steam AppID for this game?\n(Guessed from filename: ${picked.guessedAppId || 'none found'})`,
+      picked.guessedAppId || ''
+    );
+    if (appId === null) { showToast('Import cancelled'); return; }
+
+    const gameName = window.prompt('Game name (optional):', picked.guessedName || '') || null;
+
+    showToast('Importing ZIP...');
+    const result = await window.vex.manifests.importZip(picked.zipPath, appId.trim() || null, gameName);
+
+    if (result?.success) {
+      const parts = [];
+      if (result.manifestsExtracted) parts.push(`${result.manifestsExtracted} manifests`);
+      if (result.luaWritten) parts.push('Lua script written');
+      if (result.acfCreated) parts.push('ACF manifest created');
+      showToast(`Imported: ${parts.join(', ') || 'files extracted'}. Restart Steam to see it.`, 'success');
+    } else {
+      const errMsg = result?.errors?.length ? result.errors.join('; ') : (result?.error || 'Unknown error');
+      showToast(`Import failed: ${errMsg}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Import failed unexpectedly: ${err.message}`, 'error');
+    console.error('Manifest ZIP import error:', err);
   }
 });
 

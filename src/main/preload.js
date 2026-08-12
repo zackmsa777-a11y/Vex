@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('vex', {
     apply: (appId, gameName) => ipcRenderer.invoke('manifests:apply', appId, gameName),
     importZip: (zipPath, appId, gameName) => ipcRenderer.invoke('manifests:importZip', zipPath, appId, gameName),
     importZipDialog: (appId, gameName) => ipcRenderer.invoke('manifests:importZipDialog', appId, gameName),
+    pickZip: () => ipcRenderer.invoke('manifests:pickZip'),
     setKey: (key) => ipcRenderer.invoke('manifests:setKey', key),
     getKey: () => ipcRenderer.invoke('manifests:getKey'),
     status: () => ipcRenderer.invoke('manifests:status'),

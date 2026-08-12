@@ -179,26 +179,37 @@ function showZipFileInfo(file) {
 }
 
 document.getElementById('zip-submit')?.addEventListener('click', async () => {
-  const appId = document.getElementById('zip-appid').value.trim() || null;
-  const gameName = document.getElementById('zip-game-name').value.trim() || null;
-  
-  showToast('Select the manifest ZIP file...');
-  const result = await window.vex?.manifests.importZipDialog(appId, gameName);
-  
-  if (result?.cancelled) return;
-  
-  if (result?.success) {
-    const parts = [];
-    if (result.manifestsExtracted) parts.push(`${result.manifestsExtracted} manifests cached`);
-    if (result.luaWritten) parts.push('Lua script written');
-    if (result.acfCreated) parts.push('ACF manifest created');
-    showToast(`Import complete: ${parts.join(', ')}. Restart Steam to download.`, 'success');
-    closeModal('add-game-modal');
-    document.getElementById('zip-appid').value = '';
-    document.getElementById('zip-game-name').value = '';
-    if (zipFileInfo) zipFileInfo.textContent = '';
-    window.VexHome.load();
-  } else {
-    showToast(`Import failed: ${result?.error || 'Unknown error'}`, 'error');
+  try {
+    if (!window.vex?.manifests?.importZipDialog) {
+      showToast('This build is missing the ZIP import feature — please update Vex', 'error');
+      return;
+    }
+
+    let appId = document.getElementById('zip-appid').value.trim() || null;
+    let gameName = document.getElementById('zip-game-name').value.trim() || null;
+
+    showToast('Select the manifest ZIP file...');
+    const result = await window.vex.manifests.importZipDialog(appId, gameName);
+
+    if (result?.cancelled) return;
+
+    if (result?.success) {
+      const parts = [];
+      if (result.manifestsExtracted) parts.push(`${result.manifestsExtracted} manifests cached`);
+      if (result.luaWritten) parts.push('Lua script written');
+      if (result.acfCreated) parts.push('ACF manifest created');
+      showToast(`Import complete: ${parts.join(', ') || 'files extracted'}. Restart Steam to download.`, 'success');
+      closeModal('add-game-modal');
+      document.getElementById('zip-appid').value = '';
+      document.getElementById('zip-game-name').value = '';
+      if (zipFileInfo) zipFileInfo.textContent = '';
+      window.VexHome.load();
+    } else {
+      const errMsg = result?.errors?.length ? result.errors.join('; ') : (result?.error || 'Unknown error — no AppID? Try entering one above.');
+      showToast(`Import failed: ${errMsg}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Import failed unexpectedly: ${err.message}`, 'error');
+    console.error('Manifest ZIP import error:', err);
   }
 });

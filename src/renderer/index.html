@@ -237,18 +237,22 @@
 
           <div class="settings-card">
             <h3>Manifest Database</h3>
-            <p class="settings-desc">Fetch depot manifests for your games. Register at <a href="#" id="ryuu-link">generator.ryuu.lol</a> to get a free auth key (50 downloads/day).</p>
+            <p class="settings-desc">
+              <strong>Recommended:</strong> use "Import Manifest ZIP" below to load manifests you downloaded manually
+              (from Ryuu, DepotBox, etc). Ryuu now requires logging in via Discord on their site directly —
+              there's no plain copy-paste API key anymore, so the field below is optional and may not work for everyone.
+            </p>
             <div id="manifest-db-status" class="tools-status"></div>
-            <label>Ryuu Auth Key</label>
+            <label>Ryuu Auth Key (optional — only if you have one)</label>
             <div class="input-row">
-              <input type="password" id="ryuu-auth-key" placeholder="Enter your auth key..." />
+              <input type="password" id="ryuu-auth-key" placeholder="Enter your auth key if you have one..." />
               <button class="btn btn-ghost" id="ryuu-save-btn">Save</button>
             </div>
             <div class="btn-row">
               <button class="btn btn-ghost" id="manifest-check-status-btn">Check Provider Status</button>
               <button class="btn btn-primary" id="manifest-import-zip-btn">Import Manifest ZIP</button>
             </div>
-            <p class="settings-desc" style="margin-top:8px;font-size:11px;">Import a .zip you downloaded manually from Ryuu, DepotBox, or any other site. Must contain .manifest and optionally .lua files.</p>
+            <p class="settings-desc" style="margin-top:8px;font-size:11px;">Select a .zip you downloaded manually (from Ryuu, DepotBox, or any other site). Must contain .manifest and optionally .lua files. You'll be asked to confirm the Steam AppID before anything is applied.</p>
           </div>
 
           <div class="settings-card">

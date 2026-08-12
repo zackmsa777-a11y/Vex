@@ -245,6 +245,23 @@ function showGameMenu(game, anchor) {
   }, 100);
 }
 
+// ─── Global error safety net ───
+// If any button handler throws or a promise rejects without being caught,
+// show it as a toast instead of silently doing nothing — this was the root
+// cause of several "I clicked it and nothing happened" reports.
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled promise rejection:', event.reason);
+  if (typeof showToast === 'function') {
+    showToast(`Something went wrong: ${event.reason?.message || event.reason}`, 'error');
+  }
+});
+window.addEventListener('error', (event) => {
+  console.error('Uncaught error:', event.error);
+  if (typeof showToast === 'function') {
+    showToast(`Something went wrong: ${event.error?.message || event.message}`, 'error');
+  }
+});
+
 // ─── Init ───
 updateSteamStatus();
 setInterval(updateSteamStatus, 10000);

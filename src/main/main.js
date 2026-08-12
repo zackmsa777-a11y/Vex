@@ -705,6 +705,27 @@ function registerIPC() {
       return { success: false, error: err.message };
     }
   });
+  // Step 1: open the native file picker and just guess AppID/name from the
+  // filename — does NOT extract yet. Renderer shows the guess to the user
+  // for confirmation before we actually touch any files.
+  ipcMain.handle('manifests:pickZip', async () => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Select manifest ZIP file',
+        properties: ['openFile'],
+        filters: [{ name: 'ZIP archives', extensions: ['zip'] }],
+      });
+      if (result.canceled || !result.filePaths.length) {
+        return { success: false, cancelled: true };
+      }
+      const zipPath = result.filePaths[0];
+      const guess = manifestDB.guessAppIdFromFilename(zipPath);
+      return { success: true, zipPath, guessedAppId: guess.appId, guessedName: guess.name };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+  // Step 2 (or one-shot via manifests:importZip): actually extract + apply.
   ipcMain.handle('manifests:importZipDialog', async (_e, appId, gameName) => {
     const steamInfo = detectSteamPath();
     if (!steamInfo) return { success: false, error: 'Steam path not found' };
