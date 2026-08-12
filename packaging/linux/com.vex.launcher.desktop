@@ -1,0 +1,20 @@
+[Desktop Entry]
+Name=Vex
+Comment=Linux-first Steam game setup companion
+GenericName=Steam game setup companion
+Exec=vex %U
+Icon=com.vex.launcher
+Terminal=false
+Type=Application
+Categories=Game;Utility;
+Keywords=Steam;games;Linux;SLSsteam;
+StartupWMClass=Vex
+MimeType=x-scheme-handler/vex;
+
+[X-AppImage-Integrations]
+Name=Vex
+Exec=vex %U
+Comment=Linux-first Steam game setup companion
+Terminal=false
+Type=Application
+Categories=Game;Utility;

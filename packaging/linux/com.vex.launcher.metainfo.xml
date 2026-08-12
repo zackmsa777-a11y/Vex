@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.vex.launcher</id>
+  <name>Vex</name>
+  <summary>Linux-first Steam game setup companion</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>Vex simplifies the SteaMidra and SLSsteam workflow for Linux users.</p>
+    <p>Manage Steam games, configure Linux tools, discover games, and launch your library from one desktop application.</p>
+  </description>
+  <launchable type="desktop-id">com.vex.launcher.desktop</launchable>
+  <provides>
+    <binary>vex</binary>
+  </provides>
+  <categories>
+    <category>Game</category>
+    <category>Utility</category>
+  </categories>
+  <keywords>
+    <keyword>Steam</keyword>
+    <keyword>games</keyword>
+    <keyword>Linux</keyword>
+    <keyword>SLSsteam</keyword>
+  </keywords>
+  <url type="homepage">https://github.com/zackmsa777-a11y/Vex</url>
+  <url type="bugtracker">https://github.com/zackmsa777-a11y/Vex/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.1.0" date="2026-08-12">
+      <description>
+        <p>Fixed SLSsteam injection and config.yaml integration.</p>
+      </description>
+    </release>
+  </releases>
+</component>

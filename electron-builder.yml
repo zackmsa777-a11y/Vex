@@ -9,10 +9,14 @@ linux:
     - AppImage
   category: Game
   icon: src/renderer/assets/icon.png
+  synopsis: Linux-first Steam game setup companion
+  description: Vex simplifies the SteaMidra and SLSsteam workflow for Linux users.
   desktop:
     Name: Vex
     Comment: Linux-first Steam game setup companion
+    GenericName: Steam game setup companion
     Categories: Game;Utility;
+    Keywords: Steam;games;Linux;SLSsteam;
     Terminal: false
     StartupWMClass: Vex
     MimeType: x-scheme-handler/vex;
