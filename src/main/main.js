@@ -215,9 +215,22 @@ async function setupSLSsteam() {
   try {
     await downloadFile(RELEASE_URL, archivePath);
 
-    // Extract using the 7za binary bundled via the 7zip-bin package
+    // Extract using the 7za binary bundled via the 7zip-bin package.
+    // IMPORTANT: 7za is a real binary, not JS — it can't be executed from
+    // inside app.asar (asar is a virtual archive, not a real filesystem).
+    // asarUnpack in package.json copies it to app.asar.unpacked/ at build
+    // time; this path-swap is a defensive fallback in case Electron's
+    // automatic asar-unpack redirection doesn't kick in for execSync.
     const sevenBin = require('7zip-bin');
-    const sevenPath = sevenBin.path7za;
+    let sevenPath = sevenBin.path7za;
+    if (sevenPath.includes('app.asar') && !sevenPath.includes('app.asar.unpacked')) {
+      sevenPath = sevenPath.replace('app.asar', 'app.asar.unpacked');
+    }
+    if (!fs.existsSync(sevenPath)) {
+      return { success: false, error: `7za binary not found at ${sevenPath} — packaging issue, please report this` };
+    }
+    try { fs.chmodSync(sevenPath, 0o755); } catch {}
+
     const extractDir = path.join(app.getPath('temp'), 'sls-extract');
     if (fs.existsSync(extractDir)) fs.rmSync(extractDir, { recursive: true, force: true });
     fs.mkdirSync(extractDir, { recursive: true });
