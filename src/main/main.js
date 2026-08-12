@@ -274,6 +274,22 @@ async function setupSLSsteam() {
 // SLSsteam treat an AppID as owned is the AdditionalApps entry in config.yaml
 // (see addSLSApp below) — writeLuaConfig always keeps that in sync too, so every
 // "Add Game" / "Apply Fix" flow in the UI works whether or not it passes Lua content.
+function removeLegacyZeroByteManifest(steamPath, appId) {
+  const manifestPath = path.join(steamPath, 'steamapps', `appmanifest_${appId}.acf`);
+  try {
+    if (!fs.existsSync(manifestPath)) return false;
+    const manifest = fs.readFileSync(manifestPath, 'utf-8');
+    const isLegacyVexPlaceholder = /"StateFlags"\s+"4"/.test(manifest)
+      && /"SizeOnDisk"\s+"0"/.test(manifest)
+      && /"buildid"\s+"0"/.test(manifest);
+    if (!isLegacyVexPlaceholder) return false;
+    fs.unlinkSync(manifestPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function writeLuaConfig(appId, gameName, luaContent) {
   const steamInfo = detectSteamPath();
   if (!steamInfo) return { success: false, error: 'Steam path not found' };
@@ -303,6 +319,10 @@ function writeLuaConfig(appId, gameName, luaContent) {
   if (!slsResult.success) {
     return { success: false, error: slsResult.error || 'Failed to update SLSsteam config' };
   }
+
+  // Remove only the broken placeholder written by Vex <=1.1.1. Steam will
+  // recreate a real manifest with depot/size data through steam://install.
+  removeLegacyZeroByteManifest(steamPath, appId);
 
   return {
     success: true,
