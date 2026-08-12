@@ -287,8 +287,131 @@ async function checkProviderStatus() {
   return status;
 }
 
+// ─── Import a manually-downloaded manifest ZIP ───
+// The ZIP should contain .manifest files (and optionally .lua files)
+// extracted from sites like Ryuu, DepotBox, etc.
+async function importManifestZip(zipBuffer, appId, gameName, steamPath) {
+  const results = {
+    success: false,
+    appId: appId || null,
+    manifestsExtracted: 0,
+    luaWritten: false,
+    acfCreated: false,
+    errors: [],
+  };
+
+  // Validate ZIP signature
+  if (!zipBuffer || zipBuffer.length < 100) {
+    results.errors.push('ZIP file is empty or too small');
+    return results;
+  }
+  if (zipBuffer[0] !== 0x50 || zipBuffer[1] !== 0x4b) {
+    results.errors.push('Not a valid ZIP file (missing PK signature)');
+    return results;
+  }
+
+  // Extract to depotcache
+  const depotCachePath = getDepotCachePath(steamPath);
+  const extractResult = await extractZip(zipBuffer, depotCachePath);
+  if (!extractResult.success) {
+    results.errors.push(`Extraction failed: ${extractResult.error}`);
+    return results;
+  }
+
+  // Find .manifest files that were extracted
+  const manifestFiles = extractResult.files.filter(f => f.endsWith('.manifest'));
+  results.manifestsExtracted = manifestFiles.length;
+  results.manifestFiles = manifestFiles.map(f => path.basename(f));
+
+  // Find .lua files and move them to stplug-in
+  const luaFiles = extractResult.files.filter(f => f.endsWith('.lua'));
+  if (luaFiles.length > 0) {
+    try {
+      const luaDir = path.join(steamPath, 'config', 'stplug-in');
+      if (!fs.existsSync(luaDir)) fs.mkdirSync(luaDir, { recursive: true });
+
+      for (const luaFile of luaFiles) {
+        const luaName = path.basename(luaFile);
+        let destPath;
+
+        // If appId is provided, use {appId}.lua naming convention
+        if (appId) {
+          destPath = path.join(luaDir, `${appId}.lua`);
+        } else {
+          // Use the original filename from the ZIP
+          destPath = path.join(luaDir, luaName);
+        }
+
+        // Copy the .lua file to stplug-in
+        fs.copyFileSync(luaFile, destPath);
+        results.luaWritten = true;
+        results.luaPath = destPath;
+      }
+    } catch (err) {
+      results.errors.push(`Failed to copy Lua file: ${err.message}`);
+    }
+  }
+
+  // Create appmanifest ACF if we have an appId and manifest files
+  if (appId && manifestFiles.length > 0) {
+    const acfPath = path.join(steamPath, 'steamapps', `appmanifest_${appId}.acf`);
+    if (!fs.existsSync(acfPath)) {
+      try {
+        // Parse depot/manifest IDs from filenames: {depotId}_{manifestId}.manifest
+        const depotEntries = [];
+        for (const mf of manifestFiles) {
+          const match = path.basename(mf).match(/(\d+)_(\d+)\.manifest$/);
+          if (match) {
+            depotEntries.push({ depotId: match[1], manifestId: match[2] });
+          }
+        }
+
+        if (depotEntries.length > 0) {
+          const acf = `"appinfo"
+{
+  "appid"
+  {
+    "appid"   "${appId}"
+  }
+  "name"   "${gameName || `App ${appId}`}"
+  "Universe"   "1"
+  "installdir"   "${(gameName || `App ${appId}`).replace(/[<>:"/\\|?*]/g, '')}"
+  "StateFlags"   "4"
+  "AutoUpdateBehavior"   "0"
+  "BytesToDownload"   "0"
+  "BytesDownloaded"   "0"
+  "SizeOnDisk"   "0"
+  "InstalledDepots"
+  {
+${depotEntries.map(d => `    "${d.depotId}"
+    {
+      "manifest"   "${d.manifestId}"
+      "size"   "0"
+      "download"   "0"
+    }`).join('\n')}
+  }
+}
+`;
+          fs.writeFileSync(acfPath, acf, 'utf-8');
+          results.acfCreated = true;
+          results.acfPath = acfPath;
+        }
+      } catch (err) {
+        results.errors.push(`Failed to create ACF: ${err.message}`);
+      }
+    } else {
+      results.acfCreated = false;
+      results.acfPath = acfPath;
+    }
+  }
+
+  results.success = results.manifestsExtracted > 0 || results.luaWritten;
+  return results;
+}
+
 module.exports = {
   applyManifestsForApp,
+  importManifestZip,
   checkProviderStatus,
   ryuuDownloadManifests,
   depotboxValidateManifest,

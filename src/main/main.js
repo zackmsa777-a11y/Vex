@@ -650,6 +650,37 @@ function registerIPC() {
       return { error: err.message };
     }
   });
+  ipcMain.handle('manifests:importZip', async (_e, zipPath, appId, gameName) => {
+    const steamInfo = detectSteamPath();
+    if (!steamInfo) return { success: false, error: 'Steam path not found' };
+    try {
+      const fs = require('fs');
+      if (!fs.existsSync(zipPath)) return { success: false, error: 'ZIP file not found' };
+      const zipBuffer = fs.readFileSync(zipPath);
+      return await manifestDB.importManifestZip(zipBuffer, appId, gameName, steamInfo.path);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+  ipcMain.handle('manifests:importZipDialog', async (_e, appId, gameName) => {
+    const steamInfo = detectSteamPath();
+    if (!steamInfo) return { success: false, error: 'Steam path not found' };
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Select manifest ZIP file',
+        properties: ['openFile'],
+        filters: [{ name: 'ZIP archives', extensions: ['zip'] }],
+      });
+      if (result.canceled || !result.filePaths.length) {
+        return { success: false, cancelled: true };
+      }
+      const zipPath = result.filePaths[0];
+      const zipBuffer = fs.readFileSync(zipPath);
+      return await manifestDB.importManifestZip(zipBuffer, appId, gameName, steamInfo.path);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
 
   // Downloads
   ipcMain.handle('downloads:start', async (_e, opts) => {

@@ -145,3 +145,60 @@ function readFile(file) {
 
 // Load on startup
 window.VexHome.load();
+
+// ─── Import Manifest ZIP ───
+const zipDropZone = document.getElementById('zip-drop-zone');
+const zipFileInput = document.getElementById('zip-file-input');
+const zipFileInfo = document.getElementById('zip-file-info');
+let selectedZipPath = null;
+
+if (zipDropZone) {
+  zipDropZone.addEventListener('click', () => zipFileInput?.click());
+  zipDropZone.addEventListener('dragover', (e) => { e.preventDefault(); zipDropZone.classList.add('drag-over'); });
+  zipDropZone.addEventListener('dragleave', () => zipDropZone.classList.remove('drag-over'));
+  zipDropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zipDropZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.endsWith('.zip')) {
+      showZipFileInfo(file);
+    } else {
+      showToast('Please drop a .zip file', 'error');
+    }
+  });
+  zipFileInput?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) showZipFileInfo(file);
+  });
+}
+
+function showZipFileInfo(file) {
+  selectedZipPath = file.name; // We'll use the dialog approach instead
+  zipFileInfo.textContent = `Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+  zipFileInfo.style.color = 'var(--color-success)';
+}
+
+document.getElementById('zip-submit')?.addEventListener('click', async () => {
+  const appId = document.getElementById('zip-appid').value.trim() || null;
+  const gameName = document.getElementById('zip-game-name').value.trim() || null;
+  
+  showToast('Select the manifest ZIP file...');
+  const result = await window.vex?.manifests.importZipDialog(appId, gameName);
+  
+  if (result?.cancelled) return;
+  
+  if (result?.success) {
+    const parts = [];
+    if (result.manifestsExtracted) parts.push(`${result.manifestsExtracted} manifests cached`);
+    if (result.luaWritten) parts.push('Lua script written');
+    if (result.acfCreated) parts.push('ACF manifest created');
+    showToast(`Import complete: ${parts.join(', ')}. Restart Steam to download.`, 'success');
+    closeModal('add-game-modal');
+    document.getElementById('zip-appid').value = '';
+    document.getElementById('zip-game-name').value = '';
+    if (zipFileInfo) zipFileInfo.textContent = '';
+    window.VexHome.load();
+  } else {
+    showToast(`Import failed: ${result?.error || 'Unknown error'}`, 'error');
+  }
+});

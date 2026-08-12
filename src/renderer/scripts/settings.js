@@ -211,6 +211,21 @@ document.getElementById('ryuu-link')?.addEventListener('click', (e) => {
   window.vex?.system.openExternal('https://generator.ryuu.lol/');
 });
 
+document.getElementById('manifest-import-zip-btn')?.addEventListener('click', async () => {
+  showToast('Select a manifest ZIP file...');
+  const result = await window.vex?.manifests.importZipDialog(null, null);
+  if (result?.cancelled) return;
+  if (result?.success) {
+    const parts = [];
+    if (result.manifestsExtracted) parts.push(`${result.manifestsExtracted} manifests`);
+    if (result.luaWritten) parts.push('Lua script written');
+    if (result.acfCreated) parts.push('ACF manifest created');
+    showToast(`Imported: ${parts.join(', ') || 'files extracted'}`, 'success');
+  } else {
+    showToast(`Import failed: ${result?.error || 'Unknown error'}`, 'error');
+  }
+});
+
 document.getElementById('manifest-check-status-btn')?.addEventListener('click', async () => {
   showToast('Checking provider status...');
   try {
